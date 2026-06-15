@@ -563,7 +563,7 @@ confirmConfigBtn.addEventListener('click', async () => {
   reader.readAsText(configFileRaw)
 })
 
-// 校验配置（改造：不再本地读取存储，仅判断内存是否存在）
+// 校验配置
 function checkConfig() {
   if (!globalConfig) {
     configModal.style.display = 'flex'
@@ -582,7 +582,7 @@ function parseRepo() {
   return { owner: arr[0], repo: arr[1] }
 }
 
-// 只读接口：加载目录/文件，带时间戳防304缓存
+// 只读接口：加载目录/文件
 async function githubApiRead(path) {
   const { owner, repo } = parseRepo()
   const timestamp = Date.now()
@@ -598,7 +598,7 @@ async function githubApiRead(path) {
   return res.json()
 }
 
-// 写入接口：上传/新建/删除，原生无缓存参数
+// 写入接口：上传/新建/删除
 async function githubApiWrite(path, method = 'PUT', body = null) {
   const { owner, repo } = parseRepo()
   const headers = {
@@ -614,7 +614,7 @@ async function githubApiWrite(path, method = 'PUT', body = null) {
   return res.json()
 }
 
-// 递归读取目录下全部文件【串行】（含子文件夹）
+// 递归读取目录下全部文件【串行】
 async function getAllDirFiles(dirPath) {
   const list = await githubApiRead(dirPath)
   await sleep(API_DELAY)
@@ -645,7 +645,6 @@ async function deleteFolder(folderPath) {
     return false
   }
   let failCount = 0
-  // 串行循环，逐个执行，每完成一个等待延时
   for (const file of allFiles) {
     try {
       await githubApiWrite(file.path, 'DELETE', {
@@ -692,11 +691,10 @@ async function copyFolder(sourcePath, targetDirPath) {
   }
 }
 
-// 移动/重命名文件夹【串行先复制全部，再串行删除原目录】
+// 移动/重命名文件夹
 async function moveFolder(oldPath, newFolderFullPath) {
   const allFiles = await getAllDirFiles(oldPath)
   let failCount = 0
-  // 串行复制全部文件到新路径
   for (const file of allFiles) {
     const relativePath = file.path.replace(oldPath, '')
     const newFilePath = `${newFolderFullPath}${relativePath}`
@@ -711,7 +709,6 @@ async function moveFolder(oldPath, newFolderFullPath) {
     }
     await sleep(API_DELAY)
   }
-  // 复制无失败才删除原文件夹
   if (failCount === 0) {
     await deleteFolder(oldPath)
     alert('文件夹重命名/移动全部完成')
@@ -1071,7 +1068,7 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
   })
 })
 
-// 批量删除选中【文件串行删除】
+// 批量删除选中
 async function batchDeleteSelected() {
   if(!checkConfig()) return
   if (uiLocked || taskRunning || !selectedItems.length) return
@@ -1085,14 +1082,12 @@ async function batchDeleteSelected() {
 
   startLoading();
   try {
-    // 串行逐个删除普通文件
     for(const f of fileItems){
       try{
         await githubApiWrite(f.path, 'DELETE', {sha:f.sha, message:'批量删除文件'})
       }catch(e){console.error('删除文件失败',f.path,e)}
       await sleep(API_DELAY)
     }
-    // 串行逐个删除文件夹（内部自动串行删内部所有文件）
     for(const d of dirItems){
       await deleteFolder(d.path)
     }
@@ -1104,7 +1099,7 @@ async function batchDeleteSelected() {
   }
 }
 
-// 粘贴复制/剪切缓存【文件串行处理】
+// 粘贴复制/剪切缓存
 async function doPaste() {
   if(!checkConfig()) return
   if (uiLocked || taskRunning || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
@@ -1190,7 +1185,6 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
   uploadPanel.classList.remove('hidden')
   startLoading();
   try {
-    // 串行逐个上传文件，避免并发超限
     for (const file of files) {
       const item = document.createElement('div')
       item.className = 'upload-item'
@@ -1302,4 +1296,43 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   if (!newDisp) return
   const newFullName = fullName(newDisp)
   const oldItem = selectedItems[0]
- 
+  const parentPath = oldItem.path.substring(0, oldItem.path.lastIndexOf('/'))
+  const newFullPath = `${parentPath}/${newFullName}`
+  document.getElementById('renameModal').style.display = 'none'
+
+  startLoading();
+  try {
+    if(oldItem.type === 'file'){
+      const raw = await githubApiRead(oldItem.path)
+           await githubApiWrite(newFullPath, 'PUT', {
+        message: `重命名文件 ${oldItem.name} → ${newFullName}`,
+        content: raw.content
+      })
+      await sleep(API_DELAY)
+      await githubApiWrite(oldItem.path, 'DELETE', {
+        sha: oldItem.sha,
+        message: `删除原文件 ${oldItem.name}`
+      })
+    } else {
+      await moveFolder(oldItem.path, newFullPath)
+    }
+    await reloadAllView();
+  } catch (err) {
+    alert('重命名操作失败')
+    console.error(err)
+  } finally {
+    fullEndLoading();
+  }
+})
+
+// 页面初始化
+window.onload = async () => {
+  showDatePrefix = document.getElementById('toggleDate').checked
+  multiSelectMode = document.getElementById('toggleMulti').checked
+  uploadPanel.classList.add('hidden')
+  // 打开页面强制弹出配置上传弹窗
+  checkConfig()
+}
+</script>
+</body>
+</html>
