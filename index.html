@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>我的相册</title>
-  <!-- 全局禁用缓存 -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -17,7 +16,6 @@
     .date-switch { font-size:14px; }
     h1 { color: #222; font-size:24px; }
 
-    /* 相册网格 */
     .album-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -47,7 +45,6 @@
       font-size: 14px;
     }
 
-    /* 详情页 */
     .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
     .back-btn {
       padding: 9px 18px;
@@ -88,8 +85,6 @@
       cursor: pointer;
       white-space:nowrap;
     }
-
-    /* 加载/空状态提示 */
     .empty-tip {
       width: 100%;
       text-align: center;
@@ -98,6 +93,7 @@
       font-size: 16px;
     }
   </style>
+  <!-- 移除vite模板插值，避免构建报错 -->
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
 </head>
 <body>
@@ -138,7 +134,6 @@
   </div>
 
   <script type="module">
-    // 基础常量
     const STATIC_ROOT = '/albums/'
     const THUMB_W = 200
     const THUMB_H = 150
@@ -160,7 +155,6 @@
       exifGps: document.getElementById('exifGps')
     }
 
-    // 全局缓存清理
     function clearAllCache() {
       window._albumData = null
       dom.previewImg.src = ''
@@ -184,7 +178,6 @@
       return `${raw}?_t=${Date.now()}`
     }
 
-    // Canvas 生成200*150缩略图
     function generateThumb(rawImgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -208,7 +201,6 @@
       }
     }
 
-    // EXIF解析
     function getExif(rawPath) {
       return new Promise(res => {
         const img = new Image()
@@ -244,7 +236,6 @@
       })
     }
 
-    // 图片拖拽缩放
     function bindDragZoom() {
       dom.previewImg.onwheel = null
       dom.previewImg.onmousedown = null
@@ -291,25 +282,24 @@
       dom.exifGps.textContent = exif.gpsStr
     }
 
-    // ========== 核心修复：glob路径适配开发+打包 ==========
+    // 标准glob路径，Vite开发/打包完全兼容，不会构建报错
     async function scanAlbums() {
       clearAllCache()
-      // 兼容Vite开发/打包双环境glob匹配规则
-      const files = import.meta.glob('../public/albums/**/*.{jpg,jpeg,png,webp}', { eager:false, import:'default' })
-      console.log('扫描到glob文件列表:', files)
+      const files = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager:false, import:'default' })
+      console.log('glob扫描文件列表：', files)
       const albumMap = new Map()
 
       for(const globPath in files){
-        // glob原始路径：../public/albums/文件夹/图片.jpg
-        const relPath = globPath.replace('../public/albums/', '')
+        // 剥离 /public 前缀，转为浏览器可访问路径
+        const relPath = globPath.replace('/public/albums/', '')
         const pathArr = relPath.split('/')
         if(pathArr.length < 2) continue
         const folderName = pathArr[0]
         const fileName = pathArr[1]
         const ext = fileName.split('.').pop().toLowerCase()
         if(!ALLOW_EXT.includes(ext)) continue
-        // 仅匹配日期开头文件夹
         if(!FOLDER_REG.test(folderName)) continue
+
         if(!albumMap.has(folderName)){
           albumMap.set(folderName, {
             full: folderName,
@@ -320,7 +310,7 @@
         albumMap.get(folderName).files.push(fileName)
       }
 
-      console.log('过滤后有效相册:', albumMap)
+      console.log('有效相册集合：', albumMap)
       window._albumData = albumMap
       await renderList(albumMap)
     }
@@ -328,7 +318,7 @@
     async function renderList(map) {
       dom.albumList.innerHTML = ''
       if(map.size === 0){
-        dom.albumList.innerHTML = `<div class="empty-tip">未找到符合格式相册<br>请在 public/albums 下放 YYYY-MM-DD-名称 格式文件夹</div>`
+        dom.albumList.innerHTML = `<div class="empty-tip">未识别相册<br>规则：public/albums/YYYY-MM-DD-相册名/图片</div>`
         return
       }
       const showDate = dom.toggleDate.checked
@@ -349,7 +339,6 @@
       }
     }
 
-    // 路由解析
     function parseHash(){
       const hp = new URLSearchParams(location.hash.slice(1))
       return {
@@ -371,7 +360,6 @@
       }
     }
 
-    // 事件绑定
     dom.backBtn.onclick = ()=>{
       clearAllCache()
       location.hash = ''
