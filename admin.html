@@ -34,6 +34,7 @@
       justify-content: center;
     }
     .secret-key { background: #f1f1f1; padding: 10px; border-radius: 4px; word-break: break-all; }
+    .debug-info { font-size: 12px; color: #666; margin-top: 10px; }
 
     /* 文件管理 */
     .file-list { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; }
@@ -71,12 +72,14 @@
         <p>请使用谷歌验证器/微软验证器扫码，输入6位验证码完成绑定</p>
         <input type="text" id="2faCode" placeholder="输入6位验证码">
         <button class="btn-success" id="verify2fa">验证并登录</button>
+        <div class="debug-info" id="debugInfo"></div>
       </div>
 
       <div id="loginArea" style="display: none;">
         <p>请输入2FA验证码登录管理后台</p>
         <input type="text" id="loginCode" placeholder="6位验证码">
         <button class="btn-primary" id="loginBtn">登录</button>
+        <div class="debug-info" id="loginDebugInfo"></div>
       </div>
     </div>
 
@@ -96,8 +99,9 @@
     </div>
   </div>
 
-  <!-- 只保留 QRCode 库 -->
+  <!-- 引入成熟的 jsotp 库 + QRCode -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsotp@1.3.3/dist/jsotp.min.js"></script>
 
   <script>
     const STORAGE_CONFIG = 'album_global_config'
@@ -137,92 +141,7 @@
       return { owner: arr[0], repo: arr[1] }
     }
 
-    // ========== 2. 修复版 TOTP 实现 ==========
-    // 修复：标准 Base32 解码，强制大写并处理填充
-    function base32Decode(encoded) {
-      const base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-      encoded = encoded.toUpperCase().replace(/=+$/, ''); // 转大写并去掉填充
-      let bits = "";
-      for (let i = 0; i < encoded.length; i++) {
-        const val = base32chars.indexOf(encoded[i]);
-        if (val === -1) throw new Error("Invalid base32 character");
-        bits += val.toString(2).padStart(5, '0');
-      }
-      const bytes = [];
-      for (let i = 0; i + 8 <= bits.length; i += 8) {
-        bytes.push(parseInt(bits.substr(i, 8), 2));
-      }
-      return new Uint8Array(bytes);
-    }
-
-    // 生成标准 Base32 密钥（16字符）
-    function generateSecret(length = 16) {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-      let secret = "";
-      for (let i = 0; i < length; i++) {
-        secret += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return secret;
-    }
-
-    // 计算 TOTP 验证码
-    async function calculateTOTP(secret, digits = 6, period = 30) {
-      const key = base32Decode(secret);
-      const epoch = Math.floor(Date.now() / 1000);
-      const time = Math.floor(epoch / period);
-      const timeBytes = new Uint8Array(8);
-      for (let i = 0; i < 8; i++) {
-        timeBytes[7 - i] = (time >> (i * 8)) & 0xff;
-      }
-
-      const cryptoKey = await crypto.subtle.importKey(
-        "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
-      );
-      const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
-      const hmacResult = new Uint8Array(hmac);
-
-      const offset = hmacResult[hmacResult.length - 1] & 0xf;
-      const code =
-        ((hmacResult[offset] & 0x7f) << 24) |
-        ((hmacResult[offset + 1] & 0xff) << 16) |
-        ((hmacResult[offset + 2] & 0xff) << 8) |
-        (hmacResult[offset + 3] & 0xff);
-
-      return (code % Math.pow(10, digits)).toString().padStart(digits, '0');
-    }
-
-    // 验证 TOTP 验证码（前后各1个时间窗口，解决时间偏差问题）
-    async function verifyTOTP(secret, token, digits = 6, period = 30) {
-      const epoch = Math.floor(Date.now() / 1000);
-      // 检查当前、上一个、下一个时间窗口
-      for (let i = -1; i <= 1; i++) {
-        const time = Math.floor(epoch / period) + i;
-        const key = base32Decode(secret);
-        const timeBytes = new Uint8Array(8);
-        for (let j = 0; j < 8; j++) {
-          timeBytes[7 - j] = (time >> (j * 8)) & 0xff;
-        }
-
-        const cryptoKey = await crypto.subtle.importKey(
-          "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
-        );
-        const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
-        const hmacResult = new Uint8Array(hmac);
-
-        const offset = hmacResult[hmacResult.length - 1] & 0xf;
-        const code =
-          ((hmacResult[offset] & 0x7f) << 24) |
-          ((hmacResult[offset + 1] & 0xff) << 16) |
-          ((hmacResult[offset + 2] & 0xff) << 8) |
-          (hmacResult[offset + 3] & 0xff);
-
-        const totp = (code % Math.pow(10, digits)).toString().padStart(digits, '0');
-        if (totp === token) return true;
-      }
-      return false;
-    }
-
-    // ========== 3. 2FA 绑定/登录逻辑 ==========
+    // ========== 2. 2FA 绑定/登录逻辑（使用 jsotp 库） ==========
     const twofaBindArea = document.getElementById('2faBindArea')
     const loginArea = document.getElementById('loginArea')
     const fileManageArea = document.getElementById('fileManageArea')
@@ -231,6 +150,8 @@
     const loginBtn = document.getElementById('loginBtn')
     const secretKeyDom = document.getElementById('secretKey')
     const qrCodeDom = document.getElementById('qrcode')
+    const debugInfo = document.getElementById('debugInfo')
+    const loginDebugInfo = document.getElementById('loginDebugInfo')
 
     // 初始化2FA状态
     function init2FA() {
@@ -248,12 +169,13 @@
     gen2faBtn.addEventListener('click', async () => {
       try {
         // 1. 生成标准16位Base32密钥
-        otpSecret = generateSecret(16)
+        otpSecret = jsotp.Utils.randomSecret(16)
         secretKeyDom.innerText = otpSecret
         console.log('生成的密钥:', otpSecret)
 
-        // 2. 生成标准OTP链接
-        const otpUrl = `otpauth://totp/EdgeOne相册系统:相册后台?secret=${otpSecret}&issuer=EdgeOne相册系统&algorithm=SHA1&digits=6&period=30`
+        // 2. 生成标准TOTP实例
+        const totp = new jsotp.TOTP(otpSecret, 6, 30, 'SHA1')
+        const otpUrl = totp.url('EdgeOne相册系统', '相册后台')
         console.log('OTP链接:', otpUrl)
 
         // 3. 生成二维码
@@ -270,6 +192,9 @@
         qrCodeDom.appendChild(canvas)
         console.log('二维码生成成功')
 
+        // 4. 显示调试信息
+        debugInfo.innerText = `当前服务器时间: ${new Date().toLocaleString()} | 验证码: ${totp.now()}`
+
       } catch (err) {
         console.error('生成失败:', err)
         alert('生成失败，请刷新页面重试：' + err.message)
@@ -280,30 +205,36 @@
     verify2faBtn.addEventListener('click', async () => {
       const code = document.getElementById('2faCode').value.trim()
       if (!otpSecret || code.length !== 6) return alert('请先生成密钥并输入6位验证码')
-      const isValid = await verifyTOTP(otpSecret, code)
+      const totp = new jsotp.TOTP(otpSecret, 6, 30, 'SHA1')
+      // 允许前后各1个时间窗口（±30秒）
+      const isValid = totp.verify(code, 1)
+      debugInfo.innerText = `当前服务器验证码: ${totp.now()} | 你输入的: ${code} | 验证结果: ${isValid ? '成功' : '失败'}`
+      
       if (isValid) {
         localStorage.setItem(STORAGE_2FA, otpSecret)
         alert('绑定成功，请使用验证码登录')
         location.reload()
       } else {
-        alert('验证码错误，请重试（请确保手机时间与服务器时间同步）')
+        alert('验证码错误，请重试（请确保手机时间与服务器时间同步，或使用页面显示的当前验证码核对）')
       }
     })
 
     // 登录验证
     loginBtn.addEventListener('click', async () => {
       const code = document.getElementById('loginCode').value.trim()
-      const isValid = await verifyTOTP(otpSecret, code)
+      const totp = new jsotp.TOTP(otpSecret, 6, 30, 'SHA1')
+      loginDebugInfo.innerText = `当前服务器验证码: ${totp.now()} | 你输入的: ${code}`
+      const isValid = totp.verify(code, 1)
       if (isValid) {
         loginArea.style.display = 'none'
         fileManageArea.style.display = 'block'
         loadFileList()
       } else {
-        alert('验证码错误，请重试（请确保手机时间与服务器时间同步）')
+        alert('验证码错误，请重试（请确保手机时间与服务器时间同步，或使用页面显示的当前验证码核对）')
       }
     })
 
-    // ========== 4. GitHub API 工具函数 ==========
+    // ========== 3. GitHub API 工具函数 ==========
     async function githubApi(path, method = 'GET', body = null) {
       const { owner, repo } = parseRepo()
       const headers = {
@@ -317,7 +248,7 @@
       return res.json()
     }
 
-    // ========== 5. 文件管理：增删改查 ==========
+    // ========== 4. 文件管理：增删改查 ==========
     const fileList = document.getElementById('fileList')
     const addFolderBtn = document.getElementById('addFolder')
     const newFolderInput = document.getElementById('newFolder')
