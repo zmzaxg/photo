@@ -4,20 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>我的相册</title>
-  <!-- 全局强制禁用所有缓存 -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; background: #f5f5f5; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap:12px; }
     .header-right { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
     .admin-link a { color: #2563eb; text-decoration: none; font-size: 14px; }
     .date-switch { font-size:14px; }
     h1 { color: #222; font-size:24px; }
 
-    /* 响应式网格：每行3~4个相册卡片 */
     .album-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -37,7 +35,7 @@
     .album-thumb {
       width: 100%;
       height: 150px;
-      object-fit: cover; /* 等比裁剪，满足200×150规范 */
+      object-fit: cover;
       display: block;
     }
     .album-name {
@@ -47,7 +45,6 @@
       font-size: 14px;
     }
 
-    /* 详情页容器 */
     .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
     .back-btn {
       padding: 9px 18px;
@@ -94,9 +91,9 @@
       padding: 80px 20px;
       color: #666;
       font-size: 16px;
+      line-height: 1.8;
     }
   </style>
-  <!-- EXIF解析库CDN引入 -->
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
 </head>
 <body>
@@ -136,7 +133,7 @@
     </div>
   </div>
 
-  <script type="module">
+<script type="module">
     const STATIC_BASE = '/albums/'
     const THUMB_W = 200
     const THUMB_H = 150
@@ -158,8 +155,12 @@
       exifGps: document.getElementById('exifGps')
     }
 
-    function clearAllRuntimeCache() {
-      window._albumCacheMap = null
+    // 防重复扫描锁 + 全局相册缓存（解决闪烁核心）
+    let isScanning = false
+    let globalAlbumCache = null
+
+    // 仅清空详情页图片信息，不销毁相册列表DOM
+    function clearDetailCache() {
       dom.previewImg.src = ''
       dom.previewImg.style.transform = ''
       dom.previewImg.onwheel = null
@@ -169,6 +170,10 @@
       dom.exifParam.textContent = '暂无'
       dom.exifGps.textContent = '暂无'
       dom.imgLink.value = ''
+    }
+
+    // 仅在强制刷新时才替换加载文字
+    function setLoadingTip() {
       dom.albumList.innerHTML = '<div class="empty-tip">正在重新扫描相册...</div>'
     }
 
@@ -181,6 +186,7 @@
       return rawPath + '?_t=' + Date.now()
     }
 
+    // Canvas生成200*150缩略图
     function createCanvasThumbnail(rawImgSrc, doneCallback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -200,11 +206,12 @@
         doneCallback(canvas.toDataURL('image/jpeg', 0.82))
       }
       img.onerror = function() {
-        const fallbackSvg = `<svg width="${THUMB_W}" height="${THUMB_H}" xmlns="http://www.w3.org/2000/svg"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">图片加载失败</text></svg>`
+        const fallbackSvg = '<svg width="' + THUMB_W + '" height="' + THUMB_H + '" xmlns="http://www.w3.org/2000/svg"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">图片加载失败</text></svg>'
         doneCallback('data:image/svg+xml;utf8,' + fallbackSvg)
       }
     }
 
+    // EXIF解析
     function parseImageExif(rawImagePath) {
       return new Promise(function(resolve) {
         const img = new Image()
@@ -237,7 +244,7 @@
               gpsText = '纬度' + lat.toFixed(6) + ' 经度' + lon.toFixed(6)
             }
             img.src = ''
-            resolve({takeTime,cameraModel,expText,gpsText})
+            resolve({takeTime:takeTime,cameraModel:cameraModel,expText:expText,gpsText:gpsText})
           } catch(err) {
             img.src = ''
             resolve({takeTime:'读取失败',cameraModel:'读取失败',expText:'读取失败',gpsText:'读取失败'})
@@ -249,6 +256,7 @@
       })
     }
 
+    // 图片拖拽缩放
     function bindImageDragZoom() {
       dom.previewImg.onwheel = null
       dom.previewImg.onmousedown = null
@@ -282,8 +290,9 @@
       })
     }
 
+    // 加载图片详情
     async function loadPhotoDetail(albumFolderName, photoFileName) {
-      clearAllRuntimeCache()
+      clearDetailCache()
       const rawImageUrl = STATIC_BASE + albumFolderName + '/' + photoFileName
       dom.imgLink.value = location.origin + rawImageUrl
       dom.previewImg.src = getNoCacheUrl(rawImageUrl)
@@ -295,15 +304,23 @@
       dom.exifGps.textContent = exifResult.gpsText
     }
 
-    // ====================== 修复核心：glob提取全部文件路径数组，打包后不会为空 ======================
-    // 1. Vite glob导出全部匹配文件路径数组（开发/打包双环境都有值）
+    // 顶层一次性预加载glob文件列表（只执行一次）
     const globEntries = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' }))
-    console.log('全局glob文件清单（打包后必有值）：', globEntries)
+    console.log('预扫描全部图片路径：', globEntries)
 
-    async function scanAllAlbumByGlob() {
-      clearAllRuntimeCache()
+    // 扫描相册，forceRefresh=true才会重新解析glob
+    async function scanAllAlbumByGlob(forceRefresh) {
+      if(isScanning) return
+      // 已有缓存且不强制刷新，直接复用数据渲染，不走完整扫描
+      if(!forceRefresh && globalAlbumCache !== null) {
+        await renderAlbumGrid(globalAlbumCache)
+        return
+      }
+
+      isScanning = true
+      setLoadingTip()
       const albumMap = new Map()
-      // 直接遍历glob预导出的路径数组，不再实时读取glob对象
+
       for(const globPath of globEntries) {
         const relativePath = globPath.replace('/public/albums/', '')
         const pathSegments = relativePath.split('/')
@@ -313,6 +330,7 @@
         const ext = imageFileName.split('.').pop().toLowerCase()
         if(!IMG_EXT_WHITELIST.includes(ext)) continue
         if(!FOLDER_REG.test(folderName)) continue
+
         if(!albumMap.has(folderName)) {
           albumMap.set(folderName, {
             fullFolderName: folderName,
@@ -322,14 +340,18 @@
         }
         albumMap.get(folderName).imageList.push(imageFileName)
       }
-      window._albumCacheMap = albumMap
+
+      // 存入全局缓存，后续无需重复解析glob
+      globalAlbumCache = albumMap
       await renderAlbumGrid(albumMap)
+      isScanning = false
     }
 
+    // 渲染相册网格
     async function renderAlbumGrid(albumMap) {
       dom.albumList.innerHTML = ''
       if(albumMap.size === 0) {
-        dom.albumList.innerHTML = '<div class="empty-tip">未识别有效相册<br>1.检查public/albums文件夹是否存在<br>2.文件夹命名必须 YYYY-MM-DD-相册名<br>3.内部放入jpg/png/webp图片</div>'
+        dom.albumList.innerHTML = '<div class="empty-tip">未识别有效相册<br>1. 目录路径：项目/public/albums/<br>2. 文件夹命名必须 YYYY-MM-DD-相册名<br>3. 内部放入 jpg/jpeg/png/webp 图片</div>'
         return
       }
       const showFullDateName = dom.toggleDate.checked
@@ -340,16 +362,16 @@
         albumCard.className = 'album-item'
         const displayName = showFullDateName ? albumData.fullFolderName : albumData.pureName
         createCanvasThumbnail(firstPreviewImg, function(thumbDataUrl) {
-          albumCard.innerHTML = `<img class="album-thumb" src="${thumbDataUrl}"><div class="album-name">${displayName}</div>`
+          albumCard.innerHTML = '<img class="album-thumb" src="' + thumbDataUrl + '"><div class="album-name">' + displayName + '</div>'
         })
         albumCard.addEventListener('click', function() {
-          clearAllRuntimeCache()
           location.hash = 'album=' + encodeURIComponent(folderKey) + '&photo=' + encodeURIComponent(albumData.imageList[0])
         })
         dom.albumList.appendChild(albumCard)
       }
     }
 
+    // 解析Hash路由
     function parseHashRoute() {
       const hashStr = location.hash.slice(1)
       const searchParams = new URLSearchParams(hashStr)
@@ -359,8 +381,8 @@
       }
     }
 
+    // 页面路由切换
     async function switchPageByRoute() {
-      clearAllRuntimeCache()
       const route = parseHashRoute()
       if(route.album && route.photo) {
         dom.albumPage.style.display = 'none'
@@ -372,37 +394,35 @@
       }
     }
 
+    // 返回首页按钮
     dom.backBtn.onclick = function() {
-      clearAllRuntimeCache()
       location.hash = ''
     }
+
+    // 复制外链按钮
     dom.copyLink.onclick = async function() {
       try {
         await navigator.clipboard.writeText(dom.imgLink.value)
         alert('图片外链复制成功')
       } catch(err) {
-        alert('复制失败，请手动复制输入框内链接')
+        alert('复制失败，请手动复制输入框链接')
       }
     }
+
+    // 切换日期显示复选框（强制刷新相册）
     dom.toggleDate.addEventListener('change', async function() {
-      clearAllRuntimeCache()
-      await scanAllAlbumByGlob()
+      await scanAllAlbumByGlob(true)
       await switchPageByRoute()
     })
+
+    // hash变化（前进/后退）仅切换页面，不强制重扫
     window.addEventListener('hashchange', async function() {
-      clearAllRuntimeCache()
-      await scanAllAlbumByGlob()
       await switchPageByRoute()
     })
-    document.addEventListener('visibilitychange', async function() {
-      if(document.visibilityState === 'visible') {
-        clearAllRuntimeCache()
-        await scanAllAlbumByGlob()
-        await switchPageByRoute()
-      }
-    })
+
+    // 页面首次加载入口
     window.addEventListener('load', async function() {
-      await scanAllAlbumByGlob()
+      await scanAllAlbumByGlob(false)
       await switchPageByRoute()
     })
 </script>
