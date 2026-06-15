@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>相册管理后台</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui;
+    }
+    body {
+      background: #f5f7fa;
+      padding: 24px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .header {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 30px;
+    }
+    .btn {
+      padding: 8px 16px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn.danger {
+      background: #dc2626;
+    }
+    .btn.success {
+      background: #059669;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin: 8px 0;
+    }
+    .album-item {
+      padding: 12px;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      margin: 8px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .tip {
+      font-size: 14px;
+      color: #666;
+      margin: 8px 0;
+    }
+    .qrcode {
+      text-align: center;
+      margin: 16px 0;
+    }
+    .secret-key {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+      font-family: monospace;
+      word-break: break-all;
+      margin: 10px 0;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+  <!-- 二维码库 -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script type="module">
+    import { generateSecret, generateTOTP } from 'https://cdn.jsdelivr.net/npm/@otpjs/core@0.1.1/+esm';
+    window.generateSecret = generateSecret;
+    window.generateTOTP = generateTOTP;
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>相册管理后台</h1>
+      <a href="index.html" class="btn">返回相册</a>
+      <button class="btn danger" id="logoutBtn">退出登录</button>
+    </div>
+
+    <!-- 首次初始化 + 2FA 绑定页面 -->
+    <div id="setupPage" class="hidden">
+      <div class="card">
+        <h3>🔐 初始化管理员账户（强制绑定2FA）</h3>
+        <p class="tip">密码至少8位，设置后绑定身份验证器</p>
+        <input type="password" id="setPwd" placeholder="设置管理员密码" />
+        <input type="password" id="setPwd2" placeholder="重复密码" />
+        <button class="btn" id="createAccount">创建账户并生成2FA秘钥</button>
+      </div>
+
+      <div id="bind2faCard" class="card hidden">
+        <h3>📱 绑定 2FA 动态验证</h3>
+        <p class="tip">使用 Authenticator 类 App 扫描二维码，或手动复制秘钥</p>
+        <div class="qrcode"><canvas id="qrcodeCanvas"></canvas></div>
+        <div class="secret-key" id="secretKey"></div>
+        <button class="btn" id="copySecret">复制秘钥</button>
+        <p class="tip">输入App内6位验证码完成绑定</p>
+        <input type="text" id="bindCode" placeholder="6位验证码" maxlength="6" />
+        <button class="btn success" id="finishBind">完成绑定并登录</button>
+      </div>
+    </div>
+
+    <!-- 相册管理功能页 -->
+    <div id="managePage" class="hidden">
+      <div class="card">
+        <h3>新建相册</h3>
+        <p class="tip">自动生成格式：YYYY-MM-dd-自定义名称</p>
+        <input type="text" id="newAlbumName" placeholder="相册名称" />
+        <p class="tip">预览文件夹名：<span id="previewDir"></span></p>
+        <button class="btn" id="addAlbumBtn">创建相册</button>
+      </div>
+
+      <div class="card">
+        <h3>已有相册列表</h3>
+        <div id="albumList"></div>
+      </div>
+
+      <div class="card">
+        <h3>上传图片</h3>
+        <p class="tip">选择相册后上传，请到 GitHub 仓库在线上传文件</p>
+        <select id="albumSelect"></select>
+        <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" />
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const ALBUM_REG = /^\d{4}-\d{2}-\d{2}-/;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+    // 页面容器
+    const setupPage = document.getElementById('setupPage');
+    const managePage = document.getElementById('managePage');
+    const bind2faCard = document.getElementById('bind2faCard');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    // 登录态校验
+    const adminPwd = localStorage.getItem('admin_pwd');
+    const secret = localStorage.getItem('2fa_secret');
+    const isLogin = localStorage.getItem('admin_logged');
+
+    if (!adminPwd || !secret) {
+      setupPage.classList.remove('hidden');
+      managePage.classList.add('hidden');
+    } else if (!isLogin) {
+      location.href = 'login.html';
+    } else {
+      setupPage.classList.add('hidden');
+      managePage.classList.remove('hidden');
+      initManageFunc();
+    }
+
+    // ========== 2FA 绑定逻辑 ==========
+    let currentSecret = '';
+    const setPwd = document.getElementById('setPwd');
+    const setPwd2 = document.getElementById('setPwd2');
+    const createAccount = document.getElementById('createAccount');
+    const secretKey = document.getElementById('secretKey');
+    const copySecret = document.getElementById('copySecret');
+    const bindCode = document.getElementById('bindCode');
+    const finishBind = document.getElementById('finishBind');
+
+    createAccount.addEventListener('click', () => {
+      const p1 = setPwd.value.trim();
+      const p2 = setPwd2.value.trim();
+      if (p1.length < 8) return alert('密码长度不能小于8位');
+      if (p1 !== p2) return alert('两次密码不一致');
+
+      currentSecret = window.generateSecret();
+      localStorage.setItem('admin_pwd', p1);
+      localStorage.setItem('2fa_secret', currentSecret);
+
+      // 生成二维码链接
+      const otpUrl = `otpauth://totp/PhotoAlbum:Admin?secret=${currentSecret}&issuer=PhotoAlbum`;
+      QRCode.toCanvas(document.getElementById('qrcodeCanvas'), otpUrl, { width: 200 });
+      secretKey.innerText = currentSecret;
+      bind2faCard.classList.remove('hidden');
+    });
+
+    copySecret.addEventListener('click', () => {
+      navigator.clipboard.writeText(currentSecret).then(() => alert('秘钥已复制，请妥善备份'));
+    });
+
+    finishBind.addEventListener('click', () => {
+      const code = bindCode.value.trim();
+      if (!/^\d{6}$/.test(code)) return alert('请输入6位数字验证码');
+      if (window.generateTOTP(currentSecret) !== code) return alert('验证码错误');
+
+      localStorage.setItem('admin_logged', '1');
+      location.reload();
+    });
+
+    // ========== 相册管理逻辑 ==========
+    function initManageFunc() {
+      const newAlbumName = document.getElementById('newAlbumName');
+      const previewDir = document.getElementById('previewDir');
+      const addAlbumBtn = document.getElementById('addAlbumBtn');
+      const albumList = document.getElementById('albumList');
+      const albumSelect = document.getElementById('albumSelect');
+      const fileInput = document.getElementById('fileInput');
+
+      // 文件夹名预览
+      newAlbumName.addEventListener('input', () => {
+        previewDir.innerText = `${today}-${newAlbumName.value || '未命名相册'}`;
+      });
+
+      // 扫描相册
+      async function loadAlbums() {
+        const modules = import.meta.glob('./albums/**/*', { eager: false, as: 'url' });
+        const albumSet = new Set();
+        for (const path in modules) {
+          const arr = path.split('/').filter(Boolean);
+          if (arr.length < 3) continue;
+          const folder = arr[2];
+          if (ALBUM_REG.test(folder)) albumSet.add(folder);
+        }
+        renderAlbumList(Array.from(albumSet));
+      }
+
+      // 渲染相册
+      function renderAlbumList(list) {
+        albumList.innerHTML = '';
+        albumSelect.innerHTML = '<option value="">请选择相册</option>';
+        list.forEach(folder => {
+          const name = folder.replace(ALBUM_REG, '');
+          const item = document.createElement('div');
+          item.className = 'album-item';
+          item.innerHTML = `
+            <div>${folder}（${name}）</div>
+            <button class="btn danger del-btn" data-folder="${folder}">删除</button>
+          `;
+          albumList.appendChild(item);
+
+          const opt = document.createElement('option');
+          opt.value = folder;
+          opt.innerText = folder;
+          albumSelect.appendChild(opt);
+        });
+
+        // 删除提示（实际在 GitHub 在线删除文件夹）
+        document.querySelectorAll('.del-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const folder = btn.dataset.folder;
+            if (confirm(`确定删除相册 ${folder}？\n请到 GitHub 仓库在线删除对应文件夹`)) {
+              loadAlbums();
+            }
+          });
+        });
+      }
+
+      // 新建相册提示
+      addAlbumBtn.addEventListener('click', () => {
+        const name = newAlbumName.value.trim() || '未命名相册';
+        const folder = `${today}-${name}`;
+        alert(`请前往 GitHub 仓库，在 albums 目录下新建文件夹：\n${folder}`);
+        newAlbumName.value = '';
+        loadAlbums();
+      });
+
+      // 上传图片提示
+      fileInput.addEventListener('change', (e) => {
+        const folder = albumSelect.value;
+        if (!folder) return alert('请先选择相册');
+        const files = e.target.files;
+        if (!files.length) return;
+        alert(`已选择 ${files.length} 张图片\n请到 GitHub 仓库对应目录上传文件`);
+        fileInput.value = '';
+      });
+
+      loadAlbums();
+    }
+
+    // 退出登录
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('admin_logged');
+      location.href = 'login.html';
+    });
+  </script>
+</body>
+</html>
