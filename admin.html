@@ -242,6 +242,17 @@
     .status-error { color: #d83b01; }
 
     .hidden { display: none !important; }
+
+    /* 加载弹窗样式 */
+    .loading-modal .modal-box {
+      text-align: center;
+      min-width: 220px;
+      padding: 30px 20px;
+    }
+    .loading-text {
+      font-size: 14px;
+      color: #333;
+    }
   </style>
 </head>
 <body>
@@ -288,6 +299,13 @@
   <div class="menu-item item-only" data-action="rename">重命名</div>
   <div class="menu-item item-only" data-action="delete">删除</div>
   <div class="menu-item item-only" data-action="prop">属性</div>
+</div>
+
+<!-- 加载中弹窗 -->
+<div class="modal loading-modal" id="loadingModal">
+  <div class="modal-box">
+    <div class="loading-text">正在加载最新目录与文件数据，请稍候...</div>
+  </div>
 </div>
 
 <div class="modal" id="newFolderModal">
@@ -358,6 +376,8 @@ let copyCache = { path: '', name: '', type: '', action: '', list: [] }
 let selectedItems = []
 const API_BASE = 'https://api.github.com'
 
+const loadingModal = document.getElementById('loadingModal')
+
 function checkConfig() {
   globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
   if (!globalConfig) {
@@ -372,7 +392,7 @@ function parseRepo() {
   return { owner: arr[0], repo: arr[1] }
 }
 
-// 恢复原始接口，无任何防缓存代码
+// 原始无防缓存接口
 async function githubApi(path, method = 'GET', body = null) {
   const { owner, repo } = parseRepo()
   const headers = {
@@ -413,23 +433,31 @@ function clearAllSelect() {
   selectedItems = []
 }
 
-// 仅清理页面本地缓存/状态，不修改网络请求
+// 刷新逻辑：先清空DOM+弹出加载，全部接口请求完毕再渲染、关闭加载弹窗
 async function refreshCurrentDir() {
-  // 1. 清空内存选中、剪贴缓存
+  // 1. 清空前端内存缓存
   clearAllSelect()
   copyCache = { path: '', name: '', type: '', action: '', list: [] }
+  hideContextMenu()
 
-  // 2. 清空页面DOM渲染缓存（目录树、文件列表全部清空）
+  // 2. 立刻清空页面原有渲染内容
   document.getElementById('treeView').innerHTML = ''
   document.getElementById('fileArea').innerHTML = ''
 
-  // 3. 关闭右键菜单
-  hideContextMenu()
+  // 3. 弹出加载遮罩
+  loadingModal.style.display = 'flex'
 
-  // 4. 重新调用原有接口加载数据
-  renderBreadcrumb(currentPath)
-  await loadTree()
-  await renderFileList(currentPath)
+  try {
+    // 4. 串行请求接口，等待目录树+文件列表全部拉取完成
+    renderBreadcrumb(currentPath)
+    await loadTree()
+    await renderFileList(currentPath)
+  } catch (err) {
+    console.error('刷新加载失败：', err)
+  } finally {
+    // 5. 无论成功失败，全部数据处理完后关闭加载弹窗
+    loadingModal.style.display = 'none'
+  }
 }
 
 async function loadTree() {
