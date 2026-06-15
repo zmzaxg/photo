@@ -1,5 +1,5 @@
 {
-  "name": "edgeone-github-photo-album",
+  "name": "photo-album",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -7,7 +7,6 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "dependencies": {},
   "devDependencies": {
     "vite": "^5.4.0"
   }

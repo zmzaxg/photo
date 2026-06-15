@@ -1,21 +1,22 @@
 import { defineConfig } from 'vite'
+import path from 'path'
+import fs from 'fs'
 
 export default defineConfig({
-  base: '/',
+  root: './',
   publicDir: 'public',
-  server: {
-    host: '0.0.0.0',
-    port: 3000
-  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: {
-      // 把 admin.html 也作为入口打包输出
-      input: {
-        main: './index.html',
-        admin: './admin.html'
-      }
+    assetsDir: 'assets'
+  },
+  server: {
+    port: 5173,
+    host: '0.0.0.0'
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
     }
   }
 })
