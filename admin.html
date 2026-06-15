@@ -71,8 +71,14 @@
     .breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
     .breadcrumb a:hover { text-decoration:underline; }
 
-    /* 文件区域 - 两种视图 */
-    .file-area { flex:1; padding:10px; overflow:auto; background:#fff; }
+    /* 文件区域 - 全局支持右键（空白+文件） */
+    .file-area { 
+      flex:1; 
+      padding:10px; 
+      overflow:auto; 
+      background:#fff;
+      min-height: 100%;
+    }
     /* 图标预览视图 */
     .view-icon {
       display: grid;
@@ -104,7 +110,7 @@
     .view-list tr:hover { background:#e5f3ff; }
     .view-list tr.selected { background:#cce8ff; }
 
-    /* 右键菜单 */
+    /* 右键菜单 - 全局生效 */
     .context-menu {
       position: fixed;
       width: 160px;
@@ -121,6 +127,8 @@
     }
     .menu-item:hover { background: #e5f3ff; }
     .menu-divider { height:1px; background:#ddd; margin:4px 0; }
+    .menu-disabled { color: #999; cursor: default; }
+    .menu-disabled:hover { background: transparent; }
 
     /* 弹窗通用 */
     .modal {
@@ -162,6 +170,57 @@
     .preview-modal .modal-box { max-width: 90vw; max-height: 90vh; padding:10px; }
     .preview-img { max-width: 100%; max-height: 80vh; }
 
+    /* 上传进度面板 */
+    .upload-panel {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: 360px;
+      background: #fff;
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 9998;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .upload-head {
+      padding: 8px 12px;
+      background: #f8f8f8;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .upload-close { cursor: pointer; color: #666; padding: 0 6px; }
+    .upload-list { max-height: 240px; overflow-y: auto; }
+    .upload-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .upload-filename { font-size: 12px; margin-bottom: 6px; word-break: break-all; }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-inner {
+      height: 100%;
+      width: 0%;
+      background: #0078d4;
+      transition: width 0.1s linear;
+    }
+    .upload-status {
+      font-size: 11px;
+      margin-top: 4px;
+      color: #666;
+    }
+    .status-success { color: #107c10; }
+    .status-error { color: #d83b01; }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -192,21 +251,24 @@
     <div class="breadcrumb" id="breadcrumb">
       <a data-path="public/albums">相册根目录</a>
     </div>
+    <!-- 文件区域：全局监听右键、单击空白取消选中 -->
     <div class="file-area" id="fileArea"></div>
   </div>
 </div>
 
-<!-- 右键菜单 -->
+<!-- 全局右键菜单 -->
 <div class="context-menu" id="contextMenu">
-  <div class="menu-item" data-action="preview">预览</div>
-  <div class="menu-item" data-action="copy">复制</div>
-  <div class="menu-item" data-action="cut">剪切</div>
   <div class="menu-item" data-action="paste">粘贴</div>
   <div class="menu-divider"></div>
-  <div class="menu-item" data-action="rename">重命名</div>
-  <div class="menu-item" data-action="delete">删除</div>
+  <div class="menu-item" data-action="newFolder">新建文件夹</div>
+  <div class="menu-item" data-action="upload">上传文件</div>
   <div class="menu-divider"></div>
-  <div class="menu-item" data-action="prop">属性</div>
+  <div class="menu-item menu-disabled item-only" data-action="preview">预览</div>
+  <div class="menu-item menu-disabled item-only" data-action="copy">复制</div>
+  <div class="menu-item menu-disabled item-only" data-action="cut">剪切</div>
+  <div class="menu-item menu-disabled item-only" data-action="rename">重命名</div>
+  <div class="menu-item menu-disabled item-only" data-action="delete">删除</div>
+  <div class="menu-item menu-disabled item-only" data-action="prop">属性</div>
 </div>
 
 <!-- 新建文件夹弹窗 -->
@@ -260,6 +322,15 @@
   </div>
 </div>
 
+<!-- 上传进度面板 -->
+<div class="upload-panel" id="uploadPanel">
+  <div class="upload-head">
+    <span>文件上传进度</span>
+    <span class="upload-close" id="uploadPanelClose">×</span>
+  </div>
+  <div class="upload-list" id="uploadList"></div>
+</div>
+
 <!-- 隐藏文件上传 -->
 <input type="file" id="fileUpload" multiple accept="image/*" class="hidden">
 
@@ -267,7 +338,7 @@
 const STORAGE_CONFIG = 'album_global_config'
 let globalConfig = null
 let currentPath = 'public/albums'
-let viewMode = 'icon' // icon / list
+let viewMode = 'icon'
 let showDatePrefix = false
 let copyCache = { path: '', name: '', type: '', action: '' }
 let selectedItem = null
@@ -303,7 +374,6 @@ async function githubApi(path, method = 'GET', body = null) {
 }
 
 // ========== 工具函数 ==========
-// 自动生成日期前缀 YYYY-MM-DD-
 function getDatePrefix() {
   const d = new Date()
   const y = d.getFullYear()
@@ -311,17 +381,14 @@ function getDatePrefix() {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}-`
 }
-// 去除日期前缀（用于显示）
 function pureName(fullName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(fullName) ? fullName.replace(reg, '') : fullName
 }
-// 获取完整名称（带日期前缀）
 function fullName(dispName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(dispName) ? dispName : getDatePrefix() + dispName
 }
-// 文件图标
 function getFileIcon(type, name) {
   if (type === 'dir') return '📁'
   const ext = name.split('.').pop().toLowerCase()
@@ -369,7 +436,7 @@ function renderBreadcrumb(path) {
   })
 }
 
-// ========== 文件列表渲染（双视图） ==========
+// ========== 文件列表渲染 ==========
 async function renderFileList(path) {
   const area = document.getElementById('fileArea')
   area.innerHTML = ''
@@ -392,25 +459,22 @@ async function renderFileList(path) {
           <div class="file-icon">${getFileIcon(item.type, item.name)}</div>
           <div class="file-name">${dispName}</div>
         `
-        // 单击选中
         card.addEventListener('click', e => {
           e.stopPropagation()
           clearSelect()
           card.classList.add('selected')
           selectedItem = item
         })
-        // 双击预览/进入目录
         card.addEventListener('dblclick', () => {
           if (item.type === 'dir') navigateTo(item.path)
           else openPreview(item)
         })
-        // 右键菜单
         card.addEventListener('contextmenu', e => {
           e.preventDefault()
           clearSelect()
           card.classList.add('selected')
           selectedItem = item
-          showContextMenu(e.clientX, e.clientY)
+          showContextMenu(e.clientX, e.clientY, true)
         })
         area.appendChild(card)
       })
@@ -455,7 +519,7 @@ async function renderFileList(path) {
           clearSelect()
           tr.classList.add('selected')
           selectedItem = item
-          showContextMenu(e.clientX, e.clientY)
+          showContextMenu(e.clientX, e.clientY, true)
         })
         tbody.appendChild(tr)
       })
@@ -480,9 +544,29 @@ async function navigateTo(path) {
   hideContextMenu()
 }
 
-// ========== 右键菜单 ==========
+// ========== 右键菜单（Windows 逻辑：空白/文件区分菜单） ==========
 const contextMenu = document.getElementById('contextMenu')
-function showContextMenu(x, y) {
+const fileArea = document.getElementById('fileArea')
+
+// 全局空白区域右键
+fileArea.addEventListener('contextmenu', e => {
+  e.preventDefault()
+  clearSelect()
+  showContextMenu(e.clientX, e.clientY, false)
+})
+// 点击空白取消菜单
+document.addEventListener('click', hideContextMenu)
+
+// 显示菜单：hasItem = true 选中文件 / false 空白区域
+function showContextMenu(x, y, hasItem) {
+  // 切换菜单项可用状态
+  document.querySelectorAll('.item-only').forEach(el => {
+    el.classList.toggle('menu-disabled', !hasItem)
+  })
+  // 粘贴项：有复制/剪切内容才可用
+  const pasteItem = contextMenu.querySelector('[data-action="paste"]')
+  pasteItem.classList.toggle('menu-disabled', !copyCache.path)
+
   contextMenu.style.left = x + 'px'
   contextMenu.style.top = y + 'px'
   contextMenu.style.display = 'block'
@@ -490,48 +574,60 @@ function showContextMenu(x, y) {
 function hideContextMenu() {
   contextMenu.style.display = 'none'
 }
-// 点击空白关闭菜单
-document.addEventListener('click', hideContextMenu)
 
 // 右键菜单动作
-contextMenu.querySelectorAll('.menu-item').forEach(item => {
+contextMenu.querySelectorAll('.menu-item:not(.menu-disabled)').forEach(item => {
   item.addEventListener('click', async () => {
     hideContextMenu()
-    if (!selectedItem) return
     const act = item.dataset.action
-    const name = selectedItem.name
-    const path = selectedItem.path
-    const type = selectedItem.type
 
     switch(act) {
-      case 'preview':
-        openPreview(selectedItem)
+      case 'newFolder':
+        document.getElementById('newFolderModal').style.display = 'flex'
+        document.getElementById('newFolderName').value = ''
+        document.getElementById('newFolderName').focus()
         break
-      case 'copy':
-        copyCache = { path, name, type, action: 'copy' }
-        alert('已复制，在空白处右键选择【粘贴】')
-        break
-      case 'cut':
-        copyCache = { path, name, type, action: 'cut' }
-        alert('已剪切，在空白处右键选择【粘贴】')
+      case 'upload':
+        document.getElementById('fileUpload').click()
         break
       case 'paste':
         await doPaste()
         break
+      case 'preview':
+        if(selectedItem) openPreview(selectedItem)
+        break
+      case 'copy':
+        if(selectedItem) {
+          copyCache = { path: selectedItem.path, name: selectedItem.name, type: selectedItem.type, action: 'copy' }
+          alert('已复制，在空白处右键选择【粘贴】')
+        }
+        break
+      case 'cut':
+        if(selectedItem) {
+          copyCache = { path: selectedItem.path, name: selectedItem.name, type: selectedItem.type, action: 'cut' }
+          alert('已剪切，在空白处右键选择【粘贴】')
+        }
+        break
       case 'rename':
-        openRename()
+        if(selectedItem) openRename()
         break
       case 'delete':
-        await doDelete()
+        if(selectedItem) await doDelete()
         break
       case 'prop':
-        openProp()
+        if(selectedItem) openProp()
         break
     }
   })
 })
 
-// ========== 核心功能：新建/上传/复制/剪切/粘贴/删除/重命名/属性/预览 ==========
+// ========== 上传进度面板逻辑 ==========
+const uploadPanel = document.getElementById('uploadPanel')
+const uploadList = document.getElementById('uploadList')
+document.getElementById('uploadPanelClose').addEventListener('click', ()=>{
+  uploadPanel.classList.add('hidden')
+})
+
 // 新建文件夹
 document.getElementById('btnNewFolder').addEventListener('click', () => {
   document.getElementById('newFolderModal').style.display = 'flex'
@@ -557,24 +653,83 @@ document.getElementById('confirmNew').addEventListener('click', async () => {
   }
 })
 
-// 上传文件
+// 唤起上传
 document.getElementById('btnUpload').addEventListener('click', () => {
   document.getElementById('fileUpload').click()
 })
+
+// 带完整进度的文件上传
 document.getElementById('fileUpload').addEventListener('change', async e => {
   const files = e.target.files
   if (!files.length) return
-  for (const f of files) {
-    const reader = new FileReader()
-    reader.readAsDataURL(f)
-    reader.onload = async () => {
-      const b64 = reader.result.split(',')[1]
-      const path = `${currentPath}/${f.name}`
-      await githubApi(path, 'PUT', { message: `上传 ${f.name}`, content: b64 })
+  uploadPanel.classList.remove('hidden')
+
+  for (const file of files) {
+    // 单文件进度项
+    const item = document.createElement('div')
+    item.className = 'upload-item'
+    item.innerHTML = `
+      <div class="upload-filename">${file.name}</div>
+      <div class="progress-bar"><div class="progress-inner"></div></div>
+      <div class="upload-status">准备上传...</div>
+    `
+    uploadList.appendChild(item)
+    const progressInner = item.querySelector('.progress-inner')
+    const statusText = item.querySelector('.upload-status')
+
+    try {
+      statusText.textContent = '读取文件中...'
+      // 分段模拟真实进度 + FileReader 读取进度
+      const reader = new FileReader()
+      reader.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          const percent = Math.round((ev.loaded / ev.total) * 40)
+          progressInner.style.width = percent + '%'
+          statusText.textContent = `读取文件 ${ev.loaded}/${ev.total} 字节`
+        }
+      }
+
+      reader.onload = async () => {
+        progressInner.style.width = '45%'
+        statusText.textContent = '转换Base64并提交请求...'
+        const b64 = reader.result.split(',')[1]
+        const targetPath = `${currentPath}/${file.name}`
+
+        // 模拟网络请求进度
+        let reqProgress = 45
+        const progressTimer = setInterval(() => {
+          reqProgress += Math.floor(Math.random() * 3)
+          if (reqProgress >= 90) {
+            reqProgress = 90
+            clearInterval(progressTimer)
+          }
+          progressInner.style.width = reqProgress + '%'
+          statusText.textContent = `请求上传中 ${reqProgress}%`
+        }, 80)
+
+        await githubApi(targetPath, 'PUT', { message: `上传 ${file.name}`, content: b64 })
+        clearInterval(progressTimer)
+        progressInner.style.width = '100%'
+        statusText.textContent = '上传完成'
+        statusText.className = 'upload-status status-success'
+      }
+
+      reader.onerror = () => {
+        progressInner.style.width = '0%'
+        statusText.textContent = '文件读取失败'
+        statusText.className = 'upload-status status-error'
+      }
+      reader.readAsDataURL(file)
+    } catch (err) {
+      progressInner.style.width = '0%'
+      statusText.textContent = '上传失败：' + err.message
+      statusText.className = 'upload-status status-error'
     }
   }
-  alert('上传完成')
-  await renderFileList(currentPath)
+  // 上传完毕刷新列表
+  setTimeout(() => renderFileList(currentPath), 1500)
+  // 清空文件选择，支持重复选同一批文件
+  e.target.value = ''
 })
 
 // 预览图片
@@ -625,7 +780,6 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   const oldName = selectedItem.name
   const targetPath = oldPath.replace(oldName, newFullName)
   try {
-    // GitHub 重命名 = 复制+删除
     const raw = await githubApi(oldPath)
     await githubApi(targetPath, 'PUT', { message: `重命名 ${oldName} -> ${newFullName}`, content: raw.content, sha: raw.sha })
     await githubApi(oldPath, 'DELETE', { sha: raw.sha, message: '删除原文件' })
@@ -658,7 +812,6 @@ async function doPaste() {
   try {
     const raw = await githubApi(copyCache.path)
     await githubApi(newPath, 'PUT', { message: `粘贴 ${oldName}`, content: raw.content })
-    // 剪切则删除原文件
     if (copyCache.action === 'cut') {
       await githubApi(copyCache.path, 'DELETE', { sha: raw.sha, message: '剪切删除原文件' })
     }
@@ -691,6 +844,8 @@ document.getElementById('toggleDate').addEventListener('change', async e => {
 window.onload = async () => {
   if (!checkConfig()) return
   showDatePrefix = document.getElementById('toggleDate').checked
+  // 默认隐藏上传面板
+  uploadPanel.classList.add('hidden')
   await loadTree()
   await renderFileList(currentPath)
 }
