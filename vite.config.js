@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite'
 import path from 'path'
 import fs from 'fs'
-// 仅新增两行兼容ESM获取路径，原有import不动
-import { fileURLToPath, dirname } from 'url'
+// 修复导入错误：分开引入
+import { fileURLToPath } from 'url'
+
+// ESM 获取当前目录
 const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const __dirname = path.dirname(__filename)
 
 export default defineConfig({
   root: './',
@@ -13,7 +15,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
-    // 下面整段是纯新增，原有build内部配置完全保留不动
+    // 新增：同时打包 index.html + admin.html
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, 'index.html'),
