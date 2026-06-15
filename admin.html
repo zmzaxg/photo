@@ -162,6 +162,40 @@
     .preview-modal .modal-box { max-width: 90vw; max-height: 90vh; padding:10px; }
     .preview-img { max-width: 100%; max-height: 80vh; }
 
+    /* 上传进度面板 */
+    .upload-panel {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      width: 380px;
+      background: #fff;
+      border: 1px solid #ddd;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      border-radius: 6px;
+      z-index: 9998;
+      display: none;
+    }
+    .upload-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .upload-header h4 { font-size:14px; color:#222; }
+    .upload-header button { font-size:12px; padding:2px 6px; border:none; background:#eee; border-radius:2px; cursor:pointer; }
+    .upload-task-list { max-height: 320px; overflow-y: auto; padding:8px; }
+    .upload-task {
+      padding:8px;
+      border-bottom:1px solid #f0f0f0;
+    }
+    .task-name { font-size:13px; margin-bottom:4px; word-break:break-all; }
+    .task-bar-wrap { width:100%; height:8px; background:#e8e8e8; border-radius:4px; overflow:hidden; }
+    .task-bar { height:100%; background:#0078d4; width:0%; transition:0.1s width; }
+    .task-info { display:flex; justify-content:space-between; font-size:11px; color:#666; margin-top:3px; }
+    .task-status-success { color:#0f9d58; }
+    .task-status-fail { color:#d93025; }
+    .task-btn-cancel { font-size:11px; color:#d93025; cursor:pointer; border:none; background:transparent; }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -194,6 +228,15 @@
     </div>
     <div class="file-area" id="fileArea"></div>
   </div>
+</div>
+
+<!-- 上传进度悬浮面板 -->
+<div class="upload-panel" id="uploadPanel">
+  <div class="upload-header">
+    <h4>文件上传任务</h4>
+    <button id="clearAllUpload">清空已完成</button>
+  </div>
+  <div class="upload-task-list" id="uploadTaskList"></div>
 </div>
 
 <!-- 右键菜单 -->
@@ -272,6 +315,10 @@ let showDatePrefix = false
 let copyCache = { path: '', name: '', type: '', action: '' }
 let selectedItem = null
 const API_BASE = 'https://api.github.com'
+// 上传任务管理
+let uploadTaskPool = []
+const uploadPanel = document.getElementById('uploadPanel')
+const uploadTaskList = document.getElementById('uploadTaskList')
 
 // ========== 配置初始化 ==========
 function checkConfig() {
@@ -298,7 +345,7 @@ async function githubApi(path, method = 'GET', body = null) {
   const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
     method, headers, body: body ? JSON.stringify(body) : null
   })
-  if (!res.ok) throw new Error('请求失败')
+  if (!res.ok) throw new Error(`请求失败 HTTP${res.status}: ${await res.text()}`)
   return res.json()
 }
 
@@ -326,6 +373,12 @@ function getFileIcon(type, name) {
   if (type === 'dir') return '📁'
   const ext = name.split('.').pop().toLowerCase()
   return ['jpg','jpeg','png','webp','gif'].includes(ext) ? '🖼️' : '📄'
+}
+// 字节格式化
+function formatByte(size) {
+  if(size < 1024) return size + ' B'
+  if(size < 1048576) return (size / 1024).toFixed(1) + ' KB'
+  return (size / 1048576).toFixed(2) + ' MB'
 }
 
 // ========== 目录树 ==========
@@ -531,7 +584,156 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
   })
 })
 
-// ========== 核心功能：新建/上传/复制/剪切/粘贴/删除/重命名/属性/预览 ==========
+// ========== 上传任务渲染 & 处理（核心进度模块）
+// 渲染上传任务面板
+function renderUploadPanel() {
+  if(uploadTaskPool.length === 0) {
+    uploadPanel.style.display = 'none'
+    return
+  }
+  uploadPanel.style.display = 'block'
+  uploadTaskList.innerHTML = ''
+  uploadTaskPool.forEach((task, idx) => {
+    const taskEl = document.createElement('div')
+    taskEl.className = 'upload-task'
+    taskEl.dataset-taskidx = idx
+    let statusText = ''
+    let statusClass = ''
+    if(task.status === 'wait') {
+      statusText = '等待上传'
+    } else if(task.status === 'uploading') {
+      statusText = `上传中 ${task.percent}% ${formatByte(task.loaded)}/${formatByte(task.total)}`
+    } else if(task.status === 'success') {
+      statusText = '上传完成'
+      statusClass = 'task-status-success'
+    } else if(task.status === 'fail') {
+      statusText = `失败: ${task.errMsg}`
+      statusClass = 'task-status-fail'
+    }
+    taskEl.innerHTML = `
+      <div class="task-name">${task.file.name}</div>
+      <div class="task-bar-wrap">
+        <div class="task-bar" style="width:${task.percent}%"></div>
+      </div>
+      <div class="task-info">
+        <span class="${statusClass}">${statusText}</span>
+        ${task.status === 'wait' || task.status === 'uploading' ? `<button class="task-btn-cancel" data-idx="${idx}">取消</button>` : ''}
+      </div>
+    `
+    uploadTaskList.appendChild(taskEl)
+  })
+  // 取消单个任务
+  document.querySelectorAll('.task-btn-cancel').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = Number(e.target.dataset.idx)
+      const task = uploadTaskPool[idx]
+      if(task.xhr) task.xhr.abort()
+      uploadTaskPool.splice(idx,1)
+      renderUploadPanel()
+    })
+  })
+}
+// 清空全部已完成任务
+document.getElementById('clearAllUpload').addEventListener('click', () => {
+  uploadTaskPool = uploadTaskPool.filter(t => t.status !== 'success')
+  renderUploadPanel()
+})
+// 发起批量上传
+document.getElementById('btnUpload').addEventListener('click', () => {
+  document.getElementById('fileUpload').click()
+})
+document.getElementById('fileUpload').addEventListener('change', async e => {
+  const files = Array.from(e.target.files)
+  if (!files.length) return
+  // 初始化任务池
+  files.forEach(file => {
+    uploadTaskPool.push({
+      file,
+      total: file.size,
+      loaded: 0,
+      percent: 0,
+      status: 'wait', // wait / uploading / success / fail
+      errMsg: '',
+      xhr: null,
+      targetPath: `${currentPath}/${file.name}`
+    })
+  })
+  renderUploadPanel()
+  // 串行上传，避免并发429限流
+  for(let i=0; i<uploadTaskPool.length; i++) {
+    const task = uploadTaskPool[i]
+    if(task.status !== 'wait') continue
+    await uploadSingleFile(task, i)
+  }
+  // 全部任务结束后刷新目录
+  setTimeout(()=>renderFileList(currentPath), 800)
+})
+// 单文件带进度上传
+async function uploadSingleFile(task, taskIdx) {
+  try {
+    task.status = 'uploading'
+    renderUploadPanel()
+    const reader = new FileReader()
+    // 分段读取监听进度
+    reader.onprogress = (ev) => {
+      task.loaded = ev.loaded
+      task.percent = Math.round((ev.loaded / ev.total) * 100)
+      renderUploadPanel()
+    }
+    await new Promise((res, rej) => {
+      reader.onload = res
+      reader.onerror = rej
+      reader.readAsDataURL(task.file)
+    })
+    const base64 = reader.result.split(',')[1]
+    const { owner, repo } = parseRepo()
+    const headers = {
+      'Authorization': `token ${globalConfig.githubToken}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    }
+    const payload = JSON.stringify({
+      message: `上传文件 ${task.file.name}`,
+      content: base64
+    })
+    // XHR 监听上传真实网络进度
+    const xhr = new XMLHttpRequest()
+    task.xhr = xhr
+    xhr.upload.onprogress = (ev) => {
+      task.loaded = ev.loaded
+      task.percent = Math.round((ev.loaded / ev.total) * 100)
+      renderUploadPanel()
+    }
+    xhr.open('PUT', `${API_BASE}/repos/${owner}/${repo}/contents/${task.targetPath}`)
+    Object.keys(headers).forEach(k => xhr.setRequestHeader(k, headers[k]))
+    xhr.onload = () => {
+      if(xhr.status >=200 && xhr.status <300) {
+        task.status = 'success'
+      } else {
+        task.status = 'fail'
+        task.errMsg = `HTTP${xhr.status}`
+      }
+      renderUploadPanel()
+    }
+    xhr.onerror = () => {
+      task.status = 'fail'
+      task.errMsg = '网络请求失败'
+      renderUploadPanel()
+    }
+    xhr.onabort = () => {
+      task.status = 'fail'
+      task.errMsg = '已手动取消'
+      renderUploadPanel()
+    }
+    xhr.send(payload)
+  } catch(err) {
+    task.status = 'fail'
+    task.errMsg = err.message.slice(0,60)
+    renderUploadPanel()
+  }
+}
+
+// ========== 剩余原有功能：新建/预览/属性/重命名/删除/粘贴 ==========
 // 新建文件夹
 document.getElementById('btnNewFolder').addEventListener('click', () => {
   document.getElementById('newFolderModal').style.display = 'flex'
@@ -553,28 +755,8 @@ document.getElementById('confirmNew').addEventListener('click', async () => {
     await renderFileList(currentPath)
     await loadTree()
   } catch(e) {
-    alert('创建失败')
+    alert('创建失败: ' + e.message)
   }
-})
-
-// 上传文件
-document.getElementById('btnUpload').addEventListener('click', () => {
-  document.getElementById('fileUpload').click()
-})
-document.getElementById('fileUpload').addEventListener('change', async e => {
-  const files = e.target.files
-  if (!files.length) return
-  for (const f of files) {
-    const reader = new FileReader()
-    reader.readAsDataURL(f)
-    reader.onload = async () => {
-      const b64 = reader.result.split(',')[1]
-      const path = `${currentPath}/${f.name}`
-      await githubApi(path, 'PUT', { message: `上传 ${f.name}`, content: b64 })
-    }
-  }
-  alert('上传完成')
-  await renderFileList(currentPath)
 })
 
 // 预览图片
@@ -592,7 +774,7 @@ function openProp() {
   const item = selectedItem
   const name = showDatePrefix ? item.name : pureName(item.name)
   const type = item.type === 'dir' ? '文件夹' : '文件'
-  const size = item.type === 'dir' ? '无' : (item.size / 1024).toFixed(2) + ' KB'
+  const size = item.type === 'dir' ? '无' : formatByte(item.size)
   const html = `
     <p>名称：${name}</p>
     <p>类型：${type}</p>
@@ -633,7 +815,7 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
     document.getElementById('renameModal').style.display = 'none'
     await navigateTo(currentPath)
   } catch(e) {
-    alert('重命名失败')
+    alert('重命名失败: ' + e.message)
   }
 })
 
@@ -646,7 +828,7 @@ async function doDelete() {
     await renderFileList(currentPath)
     await loadTree()
   } catch(e) {
-    alert('删除失败')
+    alert('删除失败: ' + e.message)
   }
 }
 
@@ -666,7 +848,7 @@ async function doPaste() {
     copyCache = {}
     await navigateTo(currentPath)
   } catch(e) {
-    alert('粘贴失败')
+    alert('粘贴失败: ' + e.message)
   }
 }
 
