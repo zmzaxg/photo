@@ -267,7 +267,6 @@
       font-size: 14px;
       color: #333;
     }
-    /* 倒计时圆形按钮 */
     .loading-countdown-btn {
       position: absolute;
       top: 10px;
@@ -420,6 +419,13 @@ let uiLocked = false;
 let loadingTimer = null;
 const MAX_LOAD_SECONDS = 10;
 let currentCount = MAX_LOAD_SECONDS;
+// 请求间隔，防止并发限流
+const API_DELAY = 300;
+
+// 等待延迟工具
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
 
 // 仅关闭遮罩、解锁界面，不终止后台请求
 function closeLoadingMaskOnly() {
@@ -521,13 +527,15 @@ async function githubApiWrite(path, method = 'PUT', body = null) {
   return res.json()
 }
 
-// 递归读取目录下全部文件（含子文件夹）
+// 递归读取目录下全部文件【串行】（含子文件夹）
 async function getAllDirFiles(dirPath) {
   const list = await githubApiRead(dirPath)
+  await sleep(API_DELAY)
   let allFiles = []
   for (const item of list) {
     if (item.type === 'file') {
       const fileInfo = await githubApiRead(item.path)
+      await sleep(API_DELAY)
       allFiles.push({
         path: item.path,
         sha: item.sha,
@@ -542,7 +550,7 @@ async function getAllDirFiles(dirPath) {
   return allFiles
 }
 
-// 删除整个文件夹（递归清空内部所有文件）
+// 删除整个文件夹【串行逐个删除】
 async function deleteFolder(folderPath) {
   const allFiles = await getAllDirFiles(folderPath)
   if (allFiles.length === 0) {
@@ -550,6 +558,7 @@ async function deleteFolder(folderPath) {
     return false
   }
   let failCount = 0
+  // 串行循环，逐个执行，每完成一个等待延时
   for (const file of allFiles) {
     try {
       await githubApiWrite(file.path, 'DELETE', {
@@ -560,16 +569,17 @@ async function deleteFolder(folderPath) {
       failCount++
       console.error('删除文件失败', file.path, err)
     }
+    await sleep(API_DELAY)
   }
   if (failCount > 0) {
-    alert(`删除完成，${failCount}个文件删除失败`)
+    alert(`文件夹处理完成，${failCount}个文件删除失败`)
   } else {
-    alert('文件夹删除成功')
+    alert('文件夹全部文件删除成功')
   }
   return true
 }
 
-// 复制完整文件夹到目标目录
+// 复制完整文件夹【串行逐个复制】
 async function copyFolder(sourcePath, targetDirPath) {
   const allFiles = await getAllDirFiles(sourcePath)
   const sourceFolderName = sourcePath.split('/').pop()
@@ -586,19 +596,20 @@ async function copyFolder(sourcePath, targetDirPath) {
       failCount++
       console.error('复制失败', newFilePath, err)
     }
+    await sleep(API_DELAY)
   }
   if (failCount > 0) {
-    alert(`复制完成，${failCount}个文件复制失败`)
+    alert(`文件夹复制完成，${failCount}个文件复制失败`)
   } else {
-    alert('文件夹复制成功')
+    alert('文件夹全部文件复制成功')
   }
 }
 
-// 移动/重命名文件夹
+// 移动/重命名文件夹【串行先复制全部，再串行删除原目录】
 async function moveFolder(oldPath, newFolderFullPath) {
   const allFiles = await getAllDirFiles(oldPath)
   let failCount = 0
-  // 复制到新路径
+  // 串行复制全部文件到新路径
   for (const file of allFiles) {
     const relativePath = file.path.replace(oldPath, '')
     const newFilePath = `${newFolderFullPath}${relativePath}`
@@ -611,10 +622,12 @@ async function moveFolder(oldPath, newFolderFullPath) {
       failCount++
       console.error('移动复制失败', newFilePath, err)
     }
+    await sleep(API_DELAY)
   }
+  // 复制无失败才删除原文件夹
   if (failCount === 0) {
     await deleteFolder(oldPath)
-    alert('文件夹重命名/移动成功')
+    alert('文件夹重命名/移动全部完成')
   } else {
     alert(`复制阶段${failCount}个文件失败，未删除原文件夹`)
   }
@@ -678,6 +691,7 @@ async function loadTree() {
 async function scanDirTree(path, parent, level) {
   try {
     const list = await githubApiRead(path)
+    await sleep(API_DELAY)
     const dirs = list.filter(x => x.type === 'dir' && !x.name.startsWith('.'))
     for (const d of dirs) {
       const item = document.createElement('div')
@@ -749,6 +763,7 @@ async function renderFileList(path) {
   area.innerHTML = ''
   try {
     const list = await githubApiRead(path)
+    await sleep(API_DELAY)
     const dirs = list.filter(x => x.type === 'dir' && !x.name.startsWith('.'))
     const files = list.filter(x => x.type === 'file' && !x.name.startsWith('.'))
     const all = [...dirs, ...files]
@@ -956,7 +971,7 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
   })
 })
 
-// 批量删除选中（区分文件/文件夹）
+// 批量删除选中【文件串行删除】
 async function batchDeleteSelected() {
   if (uiLocked || taskRunning || !selectedItems.length) return
   const dirItems = selectedItems.filter(i => i.type === 'dir')
@@ -969,13 +984,14 @@ async function batchDeleteSelected() {
 
   startLoading();
   try {
-    // 先删文件
+    // 串行逐个删除普通文件
     for(const f of fileItems){
       try{
         await githubApiWrite(f.path, 'DELETE', {sha:f.sha, message:'批量删除文件'})
       }catch(e){console.error('删除文件失败',f.path,e)}
+      await sleep(API_DELAY)
     }
-    // 再删文件夹
+    // 串行逐个删除文件夹（内部自动串行删内部所有文件）
     for(const d of dirItems){
       await deleteFolder(d.path)
     }
@@ -987,7 +1003,7 @@ async function batchDeleteSelected() {
   }
 }
 
-// 粘贴复制/剪切缓存（支持文件夹+文件混合）
+// 粘贴复制/剪切缓存【文件串行处理】
 async function doPaste() {
   if (uiLocked || taskRunning || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
   const isCut = copyCache.action === 'cut'
@@ -997,8 +1013,10 @@ async function doPaste() {
     for (const item of copyCache.list) {
       if(item.type === 'file'){
         const raw = await githubApiRead(item.path)
+        await sleep(API_DELAY)
         const newPath = `${targetParent}/${item.name}`
         await githubApiWrite(newPath, 'PUT', { message: `粘贴文件 ${item.name}`, content: raw.content })
+        await sleep(API_DELAY)
         if(isCut) await githubApiWrite(item.path, 'DELETE', {sha:item.sha, message:'剪切删除源文件'})
       }else{
         const sourceFolder = item.path
@@ -1066,6 +1084,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
   uploadPanel.classList.remove('hidden')
   startLoading();
   try {
+    // 串行逐个上传文件，避免并发超限
     for (const file of files) {
       const item = document.createElement('div')
       item.className = 'upload-item'
@@ -1104,6 +1123,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
           progressInner.style.width = '100%'
           statusText.textContent = '上传完成'
           statusText.className = 'upload-status status-success'
+          await sleep(API_DELAY)
         }
         reader.onerror = () => {
           progressInner.style.width = '0%'
@@ -1180,7 +1200,9 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   try {
     if(oldItem.type === 'file'){
       const raw = await githubApiRead(oldItem.path)
+      await sleep(API_DELAY)
       await githubApiWrite(newFullPath, 'PUT', { message: `重命名 ${oldItem.name} -> ${newFullName}`, content: raw.content })
+      await sleep(API_DELAY)
       await githubApiWrite(oldItem.path, 'DELETE', { sha: raw.sha, message: '删除原文件' })
     }else{
       await moveFolder(oldItem.path, newFullPath)
