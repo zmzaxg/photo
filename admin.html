@@ -24,7 +24,15 @@
     .btn-success { background: #10b981; color: #fff; }
 
     /* 2FA 区域 */
-    #qrcode { margin: 16px 0; }
+    #qrcode { 
+      margin: 16px 0; 
+      width: 200px; 
+      height: 200px; 
+      border: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .secret-key { background: #f1f1f1; padding: 10px; border-radius: 4px; word-break: break-all; }
 
     /* 文件管理 */
@@ -130,7 +138,7 @@
       return { owner: arr[0], repo: arr[1] }
     }
 
-    // ========== 2. 2FA 双重认证逻辑 ==========
+    // ========== 2. 2FA 双重认证逻辑（修复版） ==========
     const twofaBindArea = document.getElementById('2faBindArea')
     const loginArea = document.getElementById('loginArea')
     const fileManageArea = document.getElementById('fileManageArea')
@@ -152,22 +160,42 @@
       }
     }
 
-    // 生成2FA密钥+二维码
-    gen2faBtn.addEventListener('click', () => {
-      const secret = new Otpauth.Secret(16)
-      otpSecret = secret.base32
-      secretKeyDom.innerText = otpSecret
+    // 【修复】生成2FA密钥+二维码
+    gen2faBtn.addEventListener('click', async () => {
+      try {
+        // 1. 生成16位随机密钥
+        const secret = new Otpauth.Secret(16)
+        otpSecret = secret.base32
+        secretKeyDom.innerText = otpSecret
+        console.log('生成的密钥:', otpSecret)
 
-      // 生成OTP链接
-      const totp = new Otpauth.TOTP({
-        issuer: 'EdgeOne相册系统',
-        label: '相册后台',
-        secret: secret
-      })
-      const otpUrl = totp.toString()
+        // 2. 生成OTP链接
+        const totp = new Otpauth.TOTP({
+          issuer: 'EdgeOne相册系统',
+          label: '相册后台',
+          secret: secret
+        })
+        const otpUrl = totp.toString()
+        console.log('OTP链接:', otpUrl)
 
-      // 生成二维码
-      QRCode.toCanvas(qrCodeDom, otpUrl, { width: 200 })
+        // 3. 生成二维码（改用Promise + 直接创建canvas元素）
+        qrCodeDom.innerHTML = '' // 清空之前的内容
+        const canvas = document.createElement('canvas')
+        await QRCode.toCanvas(canvas, otpUrl, { 
+          width: 200, 
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        })
+        qrCodeDom.appendChild(canvas)
+        console.log('二维码生成成功')
+
+      } catch (err) {
+        console.error('生成失败:', err)
+        alert('生成失败，请刷新页面重试：' + err.message)
+      }
     })
 
     // 验证并保存密钥
@@ -239,9 +267,11 @@
         document.querySelectorAll('.del-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
             const path = btn.dataset.path
-            const type = btn.dataset.type
             if (!confirm(`确定删除 ${path}？`)) return
-            const res = await githubApi(path, 'DELETE', { sha: btn.dataset.sha || '' })
+            const res = await githubApi(path, 'DELETE', { 
+              sha: btn.dataset.sha || '',
+              message: `删除文件 ${path}`
+            })
             loadFileList()
           })
         })
@@ -268,6 +298,7 @@
         alert('创建成功')
       } catch (e) {
         alert('创建失败')
+        console.error(e)
       }
     })
 
