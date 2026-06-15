@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>相册管理后台</title>
+  <title>相册管理后台 - 极简版</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
-    .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     h1, h2 { margin-bottom: 20px; color: #333; }
     .section { margin: 30px 0; padding-top: 20px; border-top: 1px solid #eee; }
 
+    /* 配置弹窗 */
     .config-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.7);
       display: flex; align-items: center; justify-content: center; z-index: 9999;
@@ -22,8 +23,7 @@
     .btn-danger { background: #ef4444; color: #fff; }
     .btn-success { background: #10b981; color: #fff; }
 
-    #qrcode { margin: 16px 0; width: 200px; height: 200px; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
-    .secret-key { background: #f1f1f1; padding: 10px; border-radius: 4px; word-break: break-all; }
+    /* 文件管理 */
     .file-list { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; }
     .file-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
     .file-item:last-child { border-bottom: none; }
@@ -31,6 +31,7 @@
   </style>
 </head>
 <body>
+  <!-- 全局配置弹窗 -->
   <div id="configModal" class="config-modal">
     <div class="modal-box">
       <h3>系统初始化配置</h3>
@@ -44,25 +45,10 @@
   <div class="container">
     <h1>相册后台管理系统</h1>
 
-    <div class="section">
-      <h2>🔐 双重认证 (2FA)</h2>
-      <div id="2faBindArea">
-        <button class="btn-primary" id="gen2fa">生成2FA密钥</button>
-        <div id="qrcode"></div>
-        <p>密钥：</p>
-        <div class="secret-key" id="secretKey"></div>
-        <input type="text" id="2faCode" placeholder="输入6位验证码">
-        <button class="btn-success" id="verify2fa">绑定并登录</button>
-      </div>
-
-      <div id="loginArea" style="display: none;">
-        <input type="text" id="loginCode" placeholder="输入6位验证码">
-        <button class="btn-primary" id="loginBtn">登录</button>
-      </div>
-    </div>
-
-    <div class="section" id="fileManageArea" style="display: none;">
+    <!-- GitHub 文件管理（相册目录） -->
+    <div class="section" id="fileManageArea">
       <h2>📁 相册文件管理</h2>
+      <p>当前目录：<code>public/albums/</code></p>
       <div>
         <input type="text" id="newFolder" placeholder="新建相册文件夹（格式：YYYY-MM-dd-名称）">
         <button class="btn-primary" id="addFolder">新建文件夹</button>
@@ -75,25 +61,16 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
-
   <script>
     const STORAGE_CONFIG = 'album_global_config'
-    const STORAGE_2FA = 'album_2fa_secret'
     let globalConfig = null
-    let otpSecret = null
     const API_BASE = 'https://api.github.com'
 
-    // 1. 配置检测
+    // ========== 1. 全局配置检测 ==========
     const configModal = document.getElementById('configModal')
     const saveConfig = document.getElementById('saveConfig')
-    saveConfig.addEventListener('click', () => {
-      const repo = document.getElementById('repoUrl').value.trim()
-      const token = document.getElementById('githubToken').value.trim()
-      if (!repo || !token) return alert('请填写完整信息')
-      localStorage.setItem(STORAGE_CONFIG, JSON.stringify({ repoUrl: repo, githubToken: token }))
-      location.reload()
-    })
+    const repoUrlInput = document.getElementById('repoUrl')
+    const tokenInput = document.getElementById('githubToken')
 
     function checkConfig() {
       globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
@@ -105,139 +82,47 @@
       return true
     }
 
+    saveConfig.addEventListener('click', () => {
+      const repo = repoUrlInput.value.trim()
+      const token = tokenInput.value.trim()
+      if (!repo || !token) return alert('仓库地址和Token不能为空')
+      localStorage.setItem(STORAGE_CONFIG, JSON.stringify({ repoUrl: repo, githubToken: token }))
+      location.reload()
+    })
+
+    // 解析 GitHub 用户名/仓库名
     function parseRepo() {
       const url = globalConfig.repoUrl
       const arr = url.replace('https://github.com/', '').split('/')
       return { owner: arr[0], repo: arr[1] }
     }
 
-    // 2. 极简 TOTP 实现
-    function base32Decode(encoded) {
-      const base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-      encoded = encoded.toUpperCase().replace(/=+$/, '');
-      let bits = "";
-      for (let i = 0; i < encoded.length; i++) {
-        const val = base32chars.indexOf(encoded[i]);
-        if (val === -1) throw new Error("Invalid base32 character");
-        bits += val.toString(2).padStart(5, '0');
-      }
-      const bytes = [];
-      for (let i = 0; i + 8 <= bits.length; i += 8) {
-        bytes.push(parseInt(bits.substr(i, 8), 2));
-      }
-      return new Uint8Array(bytes);
-    }
-
-    function generateSecret(length = 16) {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-      let secret = "";
-      for (let i = 0; i < length; i++) {
-        secret += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return secret;
-    }
-
-    async function verifyTOTP(secret, token) {
-      const key = base32Decode(secret);
-      const epoch = Math.floor(Date.now() / 1000);
-      // 扩大时间窗口到 ±2 个周期（±60秒），解决时间偏差问题
-      for (let i = -2; i <= 2; i++) {
-        const time = Math.floor(epoch / 30) + i;
-        const timeBytes = new Uint8Array(8);
-        for (let j = 0; j < 8; j++) {
-          timeBytes[7 - j] = (time >> (j * 8)) & 0xff;
-        }
-        const cryptoKey = await crypto.subtle.importKey(
-          "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
-        );
-        const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
-        const hmacResult = new Uint8Array(hmac);
-        const offset = hmacResult[hmacResult.length - 1] & 0xf;
-        const code =
-          ((hmacResult[offset] & 0x7f) << 24) |
-          ((hmacResult[offset + 1] & 0xff) << 16) |
-          ((hmacResult[offset + 2] & 0xff) << 8) |
-          (hmacResult[offset + 3] & 0xff);
-        const totp = (code % 1000000).toString().padStart(6, '0');
-        if (totp === token) return true;
-      }
-      return false;
-    }
-
-    // 3. 2FA 逻辑
-    const twofaBindArea = document.getElementById('2faBindArea')
-    const loginArea = document.getElementById('loginArea')
-    const fileManageArea = document.getElementById('fileManageArea')
-    const gen2faBtn = document.getElementById('gen2fa')
-    const verify2faBtn = document.getElementById('verify2fa')
-    const loginBtn = document.getElementById('loginBtn')
-    const secretKeyDom = document.getElementById('secretKey')
-    const qrCodeDom = document.getElementById('qrcode')
-
-    function init2FA() {
-      otpSecret = localStorage.getItem(STORAGE_2FA)
-      if (otpSecret) {
-        twofaBindArea.style.display = 'none'
-        loginArea.style.display = 'block'
-      } else {
-        twofaBindArea.style.display = 'block'
-        loginArea.style.display = 'none'
-      }
-    }
-
-    gen2faBtn.addEventListener('click', async () => {
-      otpSecret = generateSecret(16)
-      secretKeyDom.innerText = otpSecret
-      const otpUrl = `otpauth://totp/EdgeOne相册后台?secret=${otpSecret}&issuer=EdgeOne相册系统`
-      qrCodeDom.innerHTML = ''
-      const canvas = document.createElement('canvas')
-      await QRCode.toCanvas(canvas, otpUrl, { width: 200 })
-      qrCodeDom.appendChild(canvas)
-    })
-
-    verify2faBtn.addEventListener('click', async () => {
-      const code = document.getElementById('2faCode').value.trim()
-      if (!otpSecret || code.length !== 6) return alert('请先生成密钥并输入6位验证码')
-      const isValid = await verifyTOTP(otpSecret, code)
-      if (isValid) {
-        localStorage.setItem(STORAGE_2FA, otpSecret)
-        alert('绑定成功！')
-        location.reload()
-      } else {
-        alert('验证码错误，请重试（请确保手机时间与服务器时间同步）')
-      }
-    })
-
-    loginBtn.addEventListener('click', async () => {
-      const code = document.getElementById('loginCode').value.trim()
-      const isValid = await verifyTOTP(otpSecret, code)
-      if (isValid) {
-        loginArea.style.display = 'none'
-        fileManageArea.style.display = 'block'
-        loadFileList()
-      } else {
-        alert('验证码错误')
-      }
-    })
-
-    // 4. GitHub 文件管理
+    // ========== 2. GitHub API 工具函数 ==========
     async function githubApi(path, method = 'GET', body = null) {
       const { owner, repo } = parseRepo()
       const headers = {
         'Authorization': `token ${globalConfig.githubToken}`,
         'Accept': 'application/vnd.github.v3+json'
       }
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
         method, headers, body: body ? JSON.stringify(body) : null
       })
-      if (!res.ok) throw new Error('请求失败')
+      if (!res.ok) throw new Error('GitHub 请求失败')
       return res.json()
     }
 
+    // ========== 3. 文件管理：增删改查 ==========
+    const fileList = document.getElementById('fileList')
+    const addFolderBtn = document.getElementById('addFolder')
+    const newFolderInput = document.getElementById('newFolder')
+    const uploadBtn = document.getElementById('uploadBtn')
+    const uploadFile = document.getElementById('uploadFile')
+    const BASE_PATH = 'public/albums'
+
+    // 加载文件列表
     async function loadFileList() {
       try {
-        const list = await githubApi('public/albums')
-        const fileList = document.getElementById('fileList')
+        const list = await githubApi(BASE_PATH)
         fileList.innerHTML = ''
         list.forEach(item => {
           const div = document.createElement('div')
@@ -250,44 +135,71 @@
           `
           fileList.appendChild(div)
         })
+        // 绑定删除事件
         document.querySelectorAll('.del-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
-            if (!confirm('确定删除？')) return
-            await githubApi(btn.dataset.path, 'DELETE', { sha: btn.dataset.sha, message: '删除文件' })
+            const path = btn.dataset.path
+            if (!confirm(`确定删除 ${path}？`)) return
+            await githubApi(path, 'DELETE', { 
+              sha: btn.dataset.sha,
+              message: `删除文件 ${path}`
+            })
             loadFileList()
           })
         })
       } catch (e) {
+        fileList.innerHTML = '<p>加载文件失败，请检查Token和仓库权限</p>'
         console.error(e)
       }
     }
 
-    document.getElementById('addFolder').addEventListener('click', async () => {
-      const name = document.getElementById('newFolder').value.trim()
-      if (!/^\d{4}-\d{2}-\d{2}-.+$/.test(name)) return alert('格式错误，需 YYYY-MM-dd-xxx')
-      await githubApi(`public/albums/${name}/.gitkeep`, 'PUT', { message: '新建相册', content: '' })
-      alert('创建成功')
-      loadFileList()
+    // 新建文件夹（GitHub 用空文件模拟文件夹）
+    addFolderBtn.addEventListener('click', async () => {
+      const folderName = newFolderInput.value.trim()
+      if (!/^\d{4}-\d{2}-\d{2}-.+$/.test(folderName)) {
+        return alert('文件夹必须以 YYYY-MM-dd- 开头')
+      }
+      const path = `${BASE_PATH}/${folderName}/.gitkeep`
+      try {
+        await githubApi(path, 'PUT', {
+          message: `新建相册文件夹 ${folderName}`,
+          content: ''
+        })
+        newFolderInput.value = ''
+        loadFileList()
+        alert('创建成功')
+      } catch (e) {
+        alert('创建失败')
+        console.error(e)
+      }
     })
 
-    document.getElementById('uploadBtn').addEventListener('click', async () => {
-      const files = document.getElementById('uploadFile').files
-      const folder = prompt('请输入目标相册文件夹名')
-      if (!folder) return
+    // 上传图片
+    uploadBtn.addEventListener('click', async () => {
+      const files = uploadFile.files
+      if (files.length === 0) return alert('请选择图片')
+      const targetFolder = prompt('请输入目标相册文件夹名（YYYY-MM-dd-xxx）')
+      if (!targetFolder) return
       for (const file of files) {
         const reader = new FileReader()
         reader.readAsDataURL(file)
         reader.onload = async () => {
           const base64 = reader.result.split(',')[1]
-          await githubApi(`public/albums/${folder}/${file.name}`, 'PUT', { message: `上传 ${file.name}`, content: base64 })
+          const path = `${BASE_PATH}/${targetFolder}/${file.name}`
+          await githubApi(path, 'PUT', {
+            message: `上传图片 ${file.name}`,
+            content: base64
+          })
         }
       }
-      alert('上传中...')
+      setTimeout(loadFileList, 1000)
+      alert('上传请求已发送')
     })
 
+    // ========== 应用入口 ==========
     window.onload = () => {
       if (checkConfig()) {
-        init2FA()
+        loadFileList()
       }
     }
   </script>
