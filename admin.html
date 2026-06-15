@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 移动端强制适配 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>相册管理后台 - Windows 风格文件管理器</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
@@ -10,22 +11,53 @@
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
 
+    /* 移动端折叠头部菜单 */
     .top-bar {
-      height: 40px;
+      height: auto;
       background: #fff;
       border-bottom: 1px solid #ddd;
+      padding: 8px 12px;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      padding: 0 16px;
-      gap: 12px;
+      gap: 8px;
     }
+    .menu-toggle {
+      display: none;
+      width: 44px;
+      height: 44px;
+      border: 1px solid #ccc;
+      background: #f8f8f8;
+      font-size: 18px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .top-main-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      flex: 1;
+    }
+    .fold-panel {
+      width: 100%;
+      display: none;
+      padding-top: 8px;
+      border-top: 1px solid #eee;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .fold-panel.show { display: flex; }
+
     .top-bar button {
-      padding: 4px 10px;
+      padding: 8px 10px;
       border: 1px solid #ccc;
       background: #f8f8f8;
       border-radius: 3px;
       cursor: pointer;
       font-size: 13px;
+      min-height: 44px;
+      min-width: 44px;
     }
     .top-bar button:hover { background: #e9e9e9; }
     .top-bar button:disabled {
@@ -33,26 +65,47 @@
       color: #aaa;
       cursor: not-allowed;
     }
-    .view-group { display: flex; gap: 4px; }
+    .view-group { display: flex; gap: 4px; flex-wrap: wrap; }
     .switch-item {
       display: flex;
       align-items: center;
       gap: 6px;
       font-size:13px;
+      white-space: nowrap;
     }
 
-    .container { display: flex; height: calc(100vh - 40px); }
+    .container { display: flex; height: calc(100vh - var(--header-h, 40px)); }
 
+    /* 侧边栏移动端适配 */
     .sidebar {
       width: 220px;
       background: #fff;
       border-right: 1px solid #ddd;
       padding: 10px;
       overflow-y: auto;
+      transition: width 0.2s ease;
+      flex-shrink: 0;
+    }
+    .sidebar.hide { width: 0; padding: 0; overflow: hidden; border: none; }
+    .sidebar-toggle {
+      position: fixed;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 99;
+      width: 36px;
+      height: 80px;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      border-radius: 0 6px 6px 0;
+      font-size: 16px;
+      cursor: pointer;
+      display: none;
     }
     .tree-title { font-size:14px; font-weight:600; margin-bottom:8px; color:#333; }
     .tree-item {
-      padding: 4px 6px;
+      padding: 8px 6px;
       border-radius: 2px;
       cursor: pointer;
       display: flex;
@@ -60,28 +113,32 @@
       gap: 6px;
       font-size: 13px;
       white-space: nowrap;
+      min-height: 44px;
     }
     .tree-item:hover { background: #e5f3ff; }
     .tree-item.active { background: #0078d4; color: #fff; }
     .tree-indent { margin-left: 14px; }
 
-    .main { flex: 1; display: flex; flex-direction: column; }
+    .main { flex: 1; display: flex; flex-direction: column; width: 100%; }
     .breadcrumb-wrap {
-      height: 32px;
+      height: auto;
       display: flex;
       align-items: center;
       gap: 10px;
       background: #fff;
       border-bottom: 1px solid #ddd;
-      padding: 0 16px;
+      padding: 8px 12px;
+      flex-wrap: wrap;
     }
     #btnRefresh {
-      padding: 2px 8px;
+      padding: 8px 8px;
       font-size:12px;
       border:1px solid #ddd;
       background:#f8f8f8;
       border-radius:2px;
       cursor:pointer;
+      min-height:44px;
+      min-width:44px;
     }
     #btnRefresh:hover {
       background:#e9e9e9;
@@ -95,13 +152,15 @@
       flex:1;
       line-height: 32px;
       font-size:13px;
+      overflow-x: auto;
+      white-space: nowrap;
     }
     .breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
     .breadcrumb a:hover { text-decoration:underline; }
 
     .file-area {
       flex:1;
-      padding:10px;
+      padding:8px;
       overflow:auto;
       background:#fff;
       min-height: 100%;
@@ -117,28 +176,29 @@
 
     .view-icon {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
       gap: 8px;
     }
     .file-card {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 8px;
+      padding: 8px 4px;
       border-radius: 2px;
       cursor: pointer;
+      min-height: 100px;
     }
     .file-card:hover { background: #e5f3ff; }
     .file-card.selected { background: #cce8ff; }
-    .file-icon { font-size: 40px; margin-bottom:4px; }
-    .file-name { font-size:12px; text-align:center; word-break:break-all; }
+    .file-icon { font-size: 32px; margin-bottom:4px; }
+    .file-name { font-size:11px; text-align:center; word-break:break-all; }
 
     .view-list { width:100%; border-collapse: collapse; }
     .view-list th, .view-list td {
       border: 1px solid #eee;
-      padding: 6px 8px;
+      padding: 10px 6px;
       text-align: left;
-      font-size:13px;
+      font-size:12px;
     }
     .view-list th { background:#f8f8f8; }
     .view-list tr:hover { background:#e5f3ff; }
@@ -146,7 +206,7 @@
 
     .context-menu {
       position: fixed;
-      width: 160px;
+      width: min(160px, 85vw);
       background: #fff;
       border: 1px solid #ccc;
       box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
@@ -154,9 +214,10 @@
       display: none;
     }
     .menu-item {
-      padding: 6px 12px;
+      padding: 12px 12px;
       font-size:13px;
       cursor: pointer;
+      min-height:44px;
     }
     .menu-item:hover { background: #e5f3ff; }
     .menu-divider { height:1px; background:#ddd; margin:4px 0; }
@@ -171,12 +232,15 @@
       align-items: center;
       justify-content: center;
       z-index: 10000;
+      padding:10px;
     }
     .modal-box {
       background:#fff;
-      padding: 20px;
+      padding: 16px;
       border-radius: 4px;
-      min-width: 220px;
+      width: min(480px, 100%);
+      max-height: 85vh;
+      overflow-y: auto;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       position: relative;
     }
@@ -184,18 +248,21 @@
     .modal-row { margin:10px 0; font-size:13px; }
     .modal-input {
       width:100%;
-      padding:6px;
+      padding:10px;
       border:1px solid #ccc;
       border-radius:2px;
       margin-top:4px;
+      font-size:14px;
     }
-    .modal-btn-group { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; }
+    .modal-btn-group { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
     .modal-btn {
-      padding:5px 14px;
+      padding:10px 14px;
       border:1px solid #ccc;
       background:#f8f8f8;
       cursor:pointer;
       border-radius:2px;
+      min-height:44px;
+      min-width:80px;
     }
     .modal-btn:disabled {
       background: #eee;
@@ -204,14 +271,14 @@
     }
     .modal-btn.primary { background:#0078d4; color:#fff; border-color:#0078d4; }
 
-    .preview-modal .modal-box { max-width: 90vw; max-height: 90vh; padding:10px; }
-    .preview-img { max-width: 100%; max-height: 80vh; }
+    .preview-modal .modal-box { max-width: 95vw; max-height: 90vh; padding:10px; }
+    .preview-img { max-width: 100%; max-height: 75vh; }
 
     .upload-panel {
       position: fixed;
-      right: 20px;
-      bottom: 20px;
-      width: 360px;
+      right: 10px;
+      bottom: 10px;
+      width: min(360px, calc(100vw - 20px));
       background: #fff;
       border: 1px solid #ccc;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
@@ -220,7 +287,7 @@
       overflow: hidden;
     }
     .upload-head {
-      padding: 8px 12px;
+      padding: 10px 12px;
       background: #f8f8f8;
       border-bottom: 1px solid #eee;
       display: flex;
@@ -229,8 +296,8 @@
       font-size: 13px;
       font-weight: 600;
     }
-    .upload-close { cursor: pointer; color: #666; padding: 0 6px; }
-    .upload-list { max-height: 240px; overflow-y: auto; }
+    .upload-close { cursor: pointer; color: #666; padding: 0 6px; min-height:44px; display:flex; align-items:center; }
+    .upload-list { max-height: 220px; overflow-y: auto; }
     .upload-item {
       padding: 10px 12px;
       border-bottom: 1px solid #f0f0f0;
@@ -271,8 +338,8 @@
       position: absolute;
       top: 10px;
       right: 10px;
-      width: 30px;
-      height: 30px;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
       background: #0078d4;
       color: #fff;
@@ -298,27 +365,47 @@
       margin:8px 0;
       line-height:1.5;
     }
+
+    /* 媒体查询：手机平板适配 */
+    @media (max-width: 768px) {
+      .menu-toggle { display: block; }
+      .sidebar { width: 0; padding:0; overflow:hidden; border:none; }
+      .sidebar.show { width: 180px; padding:10px; border-right:1px solid #ddd; }
+      .sidebar-toggle { display: block; }
+      .top-bar { --header-h: auto; }
+      .view-group { width:100%; }
+      .breadcrumb { font-size:12px; }
+      .view-icon { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+      .upload-panel { right:5px; bottom:5px; }
+    }
   </style>
 </head>
 <body>
 <div class="top-bar">
-  <button id="btnConfigFile">加载配置文件</button>
-  <button id="btnNewFolder">新建文件夹</button>
-  <button id="btnUpload">上传文件</button>
-  <div class="view-group">
-    <button id="viewIcon">图标视图</button>
-    <button id="viewList">详细列表</button>
+  <button class="menu-toggle" id="topMenuToggle">☰</button>
+  <div class="top-main-buttons">
+    <button id="btnConfigFile">加载配置</button>
+    <button id="btnNewFolder">新建</button>
+    <button id="btnUpload">上传</button>
+    <div class="view-group">
+      <button id="viewIcon">图标</button>
+      <button id="viewList">列表</button>
+    </div>
   </div>
-  <label class="switch-item">
-    <input type="checkbox" id="toggleMulti"> 启用多选
-  </label>
-  <label class="switch-item">
-    <input type="checkbox" id="toggleDate"> 显示日期前缀
-  </label>
+  <!-- 移动端折叠面板：多选、日期开关 -->
+  <div class="fold-panel" id="topFoldPanel">
+    <label class="switch-item">
+      <input type="checkbox" id="toggleMulti"> 启用多选
+    </label>
+    <label class="switch-item">
+      <input type="checkbox" id="toggleDate"> 显示日期前缀
+    </label>
+  </div>
 </div>
 
+<button class="sidebar-toggle" id="sideToggle">◀</button>
 <div class="container">
-  <div class="sidebar">
+  <div class="sidebar" id="sideBarWrap">
     <div class="tree-title">相册目录</div>
     <div id="treeView"></div>
   </div>
@@ -441,6 +528,22 @@ let selectedItems = []
 const API_BASE = 'https://api.github.com'
 const loadingModal = document.getElementById('loadingModal')
 const loadingCountBtn = document.getElementById('loadingCountBtn')
+
+// 移动端折叠控制DOM
+const topMenuToggle = document.getElementById('topMenuToggle')
+const topFoldPanel = document.getElementById('topFoldPanel')
+const sideToggle = document.getElementById('sideToggle')
+const sideBarWrap = document.getElementById('sideBarWrap')
+
+// 顶部折叠面板切换
+topMenuToggle.addEventListener('click', () => {
+  topFoldPanel.classList.toggle('show')
+})
+// 侧边栏展开收起
+sideToggle.addEventListener('click', () => {
+  sideBarWrap.classList.toggle('show')
+  sideToggle.textContent = sideBarWrap.classList.contains('show') ? '▶' : '◀'
+})
 
 // 配置弹窗DOM
 const configModal = document.getElementById('configModal')
@@ -838,8 +941,8 @@ function showContextMenu(x, y, hasFile) {
   })
   const pasteItem = contextMenu.querySelector('[data-action="paste"]')
   pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length) || uiLocked)
-  contextMenu.style.left = x + 'px'
-  contextMenu.style.top = y + 'px'
+  contextMenu.style.left = Math.min(x, window.innerWidth - 170) + 'px'
+  contextMenu.style.top = Math.min(y, window.innerHeight - 220) + 'px'
   contextMenu.style.display = 'block'
 }
 function hideContextMenu() {
@@ -857,6 +960,7 @@ async function renderFileList(path) {
     const all = [...dirs, ...files]
 
     const bindItemEvent = (el, item) => {
+      // 单击选中
       el.addEventListener('click', e => {
         if(!checkConfig()) return
         if (uiLocked) return;
@@ -869,6 +973,7 @@ async function renderFileList(path) {
           selectedItems = selectedItems.filter(s => s.path !== item.path)
         }
       })
+      // 双击进入/预览
       el.addEventListener('dblclick', async () => {
         if(!checkConfig()) return
         if (uiLocked || taskRunning) return;
@@ -882,6 +987,25 @@ async function renderFileList(path) {
           }
         } else openPreview(item)
       })
+      // 移动端长按触发右键菜单（适配无鼠标）
+      let longPressTimer = null
+      el.addEventListener('touchstart', e => {
+        longPressTimer = setTimeout(() => {
+          e.preventDefault()
+          if(!checkConfig() || uiLocked) return
+          const isSel = el.classList.contains('selected')
+          if (!isSel) {
+            clearAllSelect()
+            el.classList.add('selected')
+            selectedItems = [item]
+          }
+          const touch = e.touches[0]
+          showContextMenu(touch.clientX, touch.clientY, true)
+        }, 400)
+      })
+      el.addEventListener('touchend', () => clearTimeout(longPressTimer))
+      el.addEventListener('touchmove', () => clearTimeout(longPressTimer))
+      // 桌面端右键菜单
       el.addEventListener('contextmenu', e => {
         if(!checkConfig()) return
         if (uiLocked) return;
@@ -918,7 +1042,7 @@ async function renderFileList(path) {
       const table = document.createElement('table')
       table.className = 'view-list'
       table.innerHTML = `
-        <thead><tr><th>名称</th><th>类型</th><th>大小</th><th>路径</th></tr></thead>
+        <thead><tr><th>名称</th><th>类型</th><th>大小</th></tr></thead>
         <tbody id="listBody"></tbody>
       `
       area.appendChild(table)
@@ -935,7 +1059,6 @@ async function renderFileList(path) {
           <td>${getFileIcon(item.type, item.name)} ${dispName}</td>
           <td>${typeText}</td>
           <td>${sizeText}</td>
-          <td>${item.path}</td>
         `
         bindItemEvent(tr, item)
         tbody.appendChild(tr)
@@ -1044,13 +1167,13 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
       case 'copy':
         if(selectedItems.length) {
           copyCache = { action:'copy', list:[...selectedItems] }
-          alert('已复制，空白处右键粘贴')
+          alert('已复制，空白处右键/长按粘贴')
         }
         break
       case 'cut':
         if(selectedItems.length) {
           copyCache = { action:'cut', list:[...selectedItems] }
-          alert('已剪切，空白处右键粘贴')
+          alert('已剪切，空白处右键/长按粘贴')
         }
         break
       case 'rename':
@@ -1188,7 +1311,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
     for (const file of files) {
       const item = document.createElement('div')
       item.className = 'upload-item'
-      item.innerHTML = `
+            item.innerHTML = `
         <div class="upload-filename">${file.name}</div>
         <div class="progress-bar"><div class="progress-inner"></div></div>
         <div class="upload-status">准备上传...</div>
@@ -1304,7 +1427,7 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   try {
     if(oldItem.type === 'file'){
       const raw = await githubApiRead(oldItem.path)
-           await githubApiWrite(newFullPath, 'PUT', {
+      await githubApiWrite(newFullPath, 'PUT', {
         message: `重命名文件 ${oldItem.name} → ${newFullName}`,
         content: raw.content
       })
@@ -1325,12 +1448,33 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   }
 })
 
+// 视图切换
+document.getElementById('viewIcon').addEventListener('click', async () => {
+  if (uiLocked || taskRunning) return;
+  viewMode = 'icon'
+  startLoading();
+  try {
+    await renderFileList(currentPath)
+  } finally {
+    fullEndLoading();
+  }
+})
+document.getElementById('viewList').addEventListener('click', async () => {
+  if (uiLocked || taskRunning) return;
+  viewMode = 'list'
+  startLoading();
+  try {
+    await renderFileList(currentPath)
+  } finally {
+    fullEndLoading();
+  }
+})
+
 // 页面初始化
 window.onload = async () => {
   showDatePrefix = document.getElementById('toggleDate').checked
   multiSelectMode = document.getElementById('toggleMulti').checked
   uploadPanel.classList.add('hidden')
-  // 打开页面强制弹出配置上传弹窗
   checkConfig()
 }
 </script>
