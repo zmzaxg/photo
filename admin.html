@@ -461,7 +461,7 @@ function renderBreadcrumb(path) {
   })
 }
 
-// ========== 文件列表渲染 + 修复右键多选丢失逻辑 ==========
+// ========== 文件列表渲染 + 彻底修复右键丢失选中BUG ==========
 async function renderFileList(path) {
   const area = document.getElementById('fileArea')
   area.innerHTML = ''
@@ -505,18 +505,18 @@ async function renderFileList(path) {
           if (item.type === 'dir') navigateTo(item.path)
           else openPreview(item)
         })
-        // 【核心修复】右键文件逻辑：不再清空已多选内容
+        // 【核心修复】右键逻辑：已选中就保留全部选择，绝不清空
         card.addEventListener('contextmenu', e => {
           e.preventDefault()
-          // 判断当前文件是否已经在选中列表里
-          const isAlreadySelected = selectedItems.some(s => s.path === item.path)
-          if (!isAlreadySelected) {
-            // 当前文件没被选中：清空原有选择，只选中本文件
+          // 判断当前文件是否已经选中
+          const hasThis = selectedItems.some(s => s.path === item.path)
+          if (!hasThis) {
+            // 当前文件没被选中：清空原有，只选它
             clearAllSelect()
             card.classList.add('selected')
             selectedItems = [item]
           }
-          // 已经选中：直接保留全部多选，不做任何清空操作
+          // 已经选中：直接打开菜单，原有多选全部保留！！！
           showContextMenu(e.clientX, e.clientY, true)
         })
         area.appendChild(card)
@@ -565,11 +565,11 @@ async function renderFileList(path) {
           if (item.type === 'dir') navigateTo(item.path)
           else openPreview(item)
         })
-        // 列表行右键 同修复逻辑
+        // 列表行右键同修复逻辑
         tr.addEventListener('contextmenu', e => {
           e.preventDefault()
-          const isAlreadySelected = selectedItems.some(s => s.path === item.path)
-          if (!isAlreadySelected) {
+          const hasThis = selectedItems.some(s => s.path === item.path)
+          if (!hasThis) {
             clearAllSelect()
             tr.classList.add('selected')
             selectedItems = [item]
@@ -665,7 +665,7 @@ document.getElementById('toggleMulti').addEventListener('change', e => {
 const contextMenu = document.getElementById('contextMenu')
 const fileArea = document.getElementById('fileArea')
 
-// 空白区域右键：文件功能全部置灰，清空选择
+// 空白区域右键：清空全部选择，文件功能置灰
 fileArea.addEventListener('contextmenu', e => {
   e.preventDefault()
   clearAllSelect()
