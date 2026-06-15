@@ -89,10 +89,10 @@
     .breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
     .breadcrumb a:hover { text-decoration:underline; }
 
-    .file-area { 
-      flex:1; 
-      padding:10px; 
-      overflow:auto; 
+    .file-area {
+      flex:1;
+      padding:10px;
+      overflow:auto;
       background:#fff;
       min-height: 100%;
       position: relative;
@@ -243,7 +243,6 @@
 
     .hidden { display: none !important; }
 
-    /* 加载弹窗样式 */
     .loading-modal .modal-box {
       text-align: center;
       min-width: 220px;
@@ -301,7 +300,6 @@
   <div class="menu-item item-only" data-action="prop">属性</div>
 </div>
 
-<!-- 加载中弹窗 -->
 <div class="modal loading-modal" id="loadingModal">
   <div class="modal-box">
     <div class="loading-text">正在加载最新目录与文件数据，请稍候...</div>
@@ -375,8 +373,12 @@ let multiSelectMode = false
 let copyCache = { path: '', name: '', type: '', action: '', list: [] }
 let selectedItems = []
 const API_BASE = 'https://api.github.com'
-
 const loadingModal = document.getElementById('loadingModal')
+
+// 刷新冷却锁
+let isRefreshing = false;
+const MIN_REFRESH_COOLDOWN = 3000;
+let lastRefreshTime = 0;
 
 function checkConfig() {
   globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
@@ -392,8 +394,24 @@ function parseRepo() {
   return { owner: arr[0], repo: arr[1] }
 }
 
-// 原始无防缓存接口
-async function githubApi(path, method = 'GET', body = null) {
+// 只读接口：加载目录/文件，带时间戳防304缓存
+async function githubApiRead(path) {
+  const { owner, repo } = parseRepo()
+  const timestamp = Date.now()
+  const headers = {
+    'Authorization': `token ${globalConfig.githubToken}`,
+    'Accept': 'application/vnd.github.v3+json'
+  }
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}?_t=${timestamp}`, {
+    method: 'GET',
+    headers
+  })
+  if (!res.ok) throw new Error('请求失败')
+  return res.json()
+}
+
+// 写入接口：上传/新建/删除，原生无缓存参数
+async function githubApiWrite(path, method = 'PUT', body = null) {
   const { owner, repo } = parseRepo()
   const headers = {
     'Authorization': `token ${globalConfig.githubToken}`,
@@ -406,6 +424,105 @@ async function githubApi(path, method = 'GET', body = null) {
   })
   if (!res.ok) throw new Error('请求失败')
   return res.json()
+}
+
+// 递归读取目录下全部文件（含子文件夹）
+async function getAllDirFiles(dirPath) {
+  const list = await githubApiRead(dirPath)
+  let allFiles = []
+  for (const item of list) {
+    if (item.type === 'file') {
+      const fileInfo = await githubApiRead(item.path)
+      allFiles.push({
+        path: item.path,
+        sha: item.sha,
+        name: item.name,
+        content: fileInfo.content
+      })
+    } else if (item.type === 'dir') {
+      const subFiles = await getAllDirFiles(item.path)
+      allFiles = allFiles.concat(subFiles)
+    }
+  }
+  return allFiles
+}
+
+// 删除整个文件夹（递归清空内部所有文件）
+async function deleteFolder(folderPath) {
+  const allFiles = await getAllDirFiles(folderPath)
+  if (allFiles.length === 0) {
+    alert('文件夹无文件，无法删除')
+    return false
+  }
+  let failCount = 0
+  for (const file of allFiles) {
+    try {
+      await githubApiWrite(file.path, 'DELETE', {
+        sha: file.sha,
+        message: `删除目录文件: ${file.path}`
+      })
+    } catch (err) {
+      failCount++
+      console.error('删除文件失败', file.path, err)
+    }
+  }
+  if (failCount > 0) {
+    alert(`删除完成，${failCount}个文件删除失败`)
+  } else {
+    alert('文件夹删除成功')
+  }
+  return true
+}
+
+// 复制完整文件夹到目标目录
+async function copyFolder(sourcePath, targetDirPath) {
+  const allFiles = await getAllDirFiles(sourcePath)
+  const sourceFolderName = sourcePath.split('/').pop()
+  let failCount = 0
+  for (const file of allFiles) {
+    const relativePath = file.path.replace(sourcePath, '')
+    const newFilePath = `${targetDirPath}/${sourceFolderName}${relativePath}`
+    try {
+      await githubApiWrite(newFilePath, 'PUT', {
+        message: `复制文件夹文件 ${file.name}`,
+        content: file.content
+      })
+    } catch (err) {
+      failCount++
+      console.error('复制失败', newFilePath, err)
+    }
+  }
+  if (failCount > 0) {
+    alert(`复制完成，${failCount}个文件复制失败`)
+  } else {
+    alert('文件夹复制成功')
+  }
+}
+
+// 移动/重命名文件夹
+async function moveFolder(oldPath, newFolderFullPath) {
+  const allFiles = await getAllDirFiles(oldPath)
+  let failCount = 0
+  // 复制到新路径
+  for (const file of allFiles) {
+    const relativePath = file.path.replace(oldPath, '')
+    const newFilePath = `${newFolderFullPath}${relativePath}`
+    try {
+      await githubApiWrite(newFilePath, 'PUT', {
+        message: `移动文件 ${file.name}`,
+        content: file.content
+      })
+    } catch (err) {
+      failCount++
+      console.error('移动复制失败', newFilePath, err)
+    }
+  }
+  if (failCount === 0) {
+    await deleteFolder(oldPath)
+    alert('文件夹重命名/移动成功')
+  } else {
+    alert(`复制阶段${failCount}个文件失败，未删除原文件夹`)
+  }
 }
 
 function getDatePrefix() {
@@ -433,30 +550,31 @@ function clearAllSelect() {
   selectedItems = []
 }
 
-// 刷新逻辑：先清空DOM+弹出加载，全部接口请求完毕再渲染、关闭加载弹窗
+// 刷新主逻辑
 async function refreshCurrentDir() {
-  // 1. 清空前端内存缓存
+  const now = Date.now();
+  if(isRefreshing || (now - lastRefreshTime) < MIN_REFRESH_COOLDOWN){
+    return;
+  }
+  lastRefreshTime = now;
+  isRefreshing = true;
+
   clearAllSelect()
   copyCache = { path: '', name: '', type: '', action: '', list: [] }
   hideContextMenu()
-
-  // 2. 立刻清空页面原有渲染内容
   document.getElementById('treeView').innerHTML = ''
   document.getElementById('fileArea').innerHTML = ''
-
-  // 3. 弹出加载遮罩
   loadingModal.style.display = 'flex'
 
   try {
-    // 4. 串行请求接口，等待目录树+文件列表全部拉取完成
     renderBreadcrumb(currentPath)
     await loadTree()
     await renderFileList(currentPath)
   } catch (err) {
     console.error('刷新加载失败：', err)
   } finally {
-    // 5. 无论成功失败，全部数据处理完后关闭加载弹窗
     loadingModal.style.display = 'none'
+    isRefreshing = false;
   }
 }
 
@@ -467,7 +585,7 @@ async function loadTree() {
 }
 async function scanDirTree(path, parent, level) {
   try {
-    const list = await githubApi(path)
+    const list = await githubApiRead(path)
     const dirs = list.filter(x => x.type === 'dir' && !x.name.startsWith('.'))
     for (const d of dirs) {
       const item = document.createElement('div')
@@ -518,7 +636,7 @@ async function renderFileList(path) {
   const area = document.getElementById('fileArea')
   area.innerHTML = ''
   try {
-    const list = await githubApi(path)
+    const list = await githubApiRead(path)
     const dirs = list.filter(x => x.type === 'dir' && !x.name.startsWith('.'))
     const files = list.filter(x => x.type === 'file' && !x.name.startsWith('.'))
     const all = [...dirs, ...files]
@@ -657,7 +775,7 @@ async function navigateTo(path) {
   currentPath = path
   renderBreadcrumb(path)
   await loadTree()
-  await renderFileList(path)
+  await renderFileList(currentPath)
   hideContextMenu()
 }
 
@@ -673,7 +791,6 @@ document.getElementById('toggleMulti').addEventListener('change', e => {
   clearAllSelect()
 })
 
-// 绑定刷新按钮
 document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDir)
 
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
@@ -709,10 +826,10 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
         break
       case 'rename':
         if(selectedItems.length === 1) openRename()
-        else alert('仅支持单个文件重命名')
+        else alert('仅支持单个项目重命名')
         break
       case 'delete':
-        if(selectedItems.length) await doBatchDelete()
+        await batchDeleteSelected()
         break
       case 'prop':
         if(selectedItems.length === 1) openProp()
@@ -721,6 +838,55 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
     }
   })
 })
+
+// 批量删除选中（区分文件/文件夹）
+async function batchDeleteSelected() {
+  if(!selectedItems.length) return
+  const dirItems = selectedItems.filter(i => i.type === 'dir')
+  const fileItems = selectedItems.filter(i => i.type === 'file')
+  let msg = ''
+  if(dirItems.length && fileItems.length) msg = `确定删除${dirItems.length}个文件夹+${fileItems.length}个文件？文件夹内所有内容永久清除！`
+  else if(dirItems.length) msg = `确定删除${dirItems.length}个文件夹？内部所有文件将全部删除！`
+  else msg = `确定删除${fileItems.length}个文件？`
+  if(!confirm(msg)) return
+
+  // 先删文件
+  for(const f of fileItems){
+    try{
+      await githubApiWrite(f.path, 'DELETE', {sha:f.sha, message:'批量删除文件'})
+    }catch(e){console.error('删除文件失败',f.path,e)}
+  }
+  // 再删文件夹
+  for(const d of dirItems){
+    await deleteFolder(d.path)
+  }
+  await refreshCurrentDir()
+}
+
+// 粘贴复制/剪切缓存（支持文件夹+文件混合）
+async function doPaste() {
+  if (!copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
+  const isCut = copyCache.action === 'cut'
+  const targetParent = currentPath
+  for (const item of copyCache.list) {
+    if(item.type === 'file'){
+      const raw = await githubApiRead(item.path)
+      const newPath = `${targetParent}/${item.name}`
+      await githubApiWrite(newPath, 'PUT', { message: `粘贴文件 ${item.name}`, content: raw.content })
+      if(isCut) await githubApiWrite(item.path, 'DELETE', {sha:item.sha, message:'剪切删除源文件'})
+    }else{
+      const sourceFolder = item.path
+      const targetFull = `${targetParent}/${sourceFolder.split('/').pop()}`
+      if(isCut){
+        await moveFolder(sourceFolder, targetFull)
+      }else{
+        await copyFolder(sourceFolder, targetParent)
+      }
+    }
+  }
+  copyCache = { list: [], action: '' }
+  await refreshCurrentDir()
+}
 
 const uploadPanel = document.getElementById('uploadPanel')
 const uploadList = document.getElementById('uploadList')
@@ -742,11 +908,10 @@ document.getElementById('confirmNew').addEventListener('click', async () => {
   const fullDirName = fullName(name)
   const targetPath = `${currentPath}/${fullDirName}/.gitkeep`
   try {
-    await githubApi(targetPath, 'PUT', { message: `新建文件夹 ${fullDirName}`, content: '' })
+    await githubApiWrite(targetPath, 'PUT', { message: `新建文件夹 ${fullDirName}`, content: '' })
     alert('创建成功')
     document.getElementById('newFolderModal').style.display = 'none'
-    await renderFileList(currentPath)
-    await loadTree()
+    await refreshCurrentDir()
   } catch(e) {
     alert('创建失败')
   }
@@ -793,7 +958,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
           progressInner.style.width = reqProgress + '%'
           statusText.textContent = `请求上传中 ${reqProgress}%`
         }, 80)
-        await githubApi(targetPath, 'PUT', { message: `上传 ${file.name}`, content: b64 })
+        await githubApiWrite(targetPath, 'PUT', { message: `上传 ${file.name}`, content: b64 })
         clearInterval(timer)
         progressInner.style.width = '100%'
         statusText.textContent = '上传完成'
@@ -811,7 +976,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
       statusText.className = 'upload-status status-error'
     }
   }
-  setTimeout(() => renderFileList(currentPath), 1500)
+  setTimeout(() => refreshCurrentDir(), 1500)
   e.target.value = ''
 })
 
@@ -857,57 +1022,19 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   if (!newDisp) return
   const newFullName = fullName(newDisp)
   const oldItem = selectedItems[0]
-  const oldPath = oldItem.path
-  const oldName = oldItem.name
-  const targetPath = oldPath.replace(oldName, newFullName)
-  try {
-    const raw = await githubApi(oldPath)
-    await githubApi(targetPath, 'PUT', { message: `重命名 ${oldName} -> ${newFullName}`, content: raw.content, sha: raw.sha })
-    await githubApi(oldPath, 'DELETE', { sha: raw.sha, message: '删除原文件' })
-    alert('重命名成功')
-    document.getElementById('renameModal').style.display = 'none'
-    await navigateTo(currentPath)
-  } catch(e) {
-    alert('重命名失败')
+  const parentPath = oldItem.path.substring(0, oldItem.path.lastIndexOf('/'))
+  const newFullPath = `${parentPath}/${newFullName}`
+  document.getElementById('renameModal').style.display = 'none'
+
+  if(oldItem.type === 'file'){
+    const raw = await githubApiRead(oldItem.path)
+    await githubApiWrite(newFullPath, 'PUT', { message: `重命名 ${oldItem.name} -> ${newFullName}`, content: raw.content })
+    await githubApiWrite(oldItem.path, 'DELETE', { sha: raw.sha, message: '删除原文件' })
+  }else{
+    await moveFolder(oldItem.path, newFullPath)
   }
+  await refreshCurrentDir()
 })
-
-async function doBatchDelete() {
-  const count = selectedItems.length
-  if (!confirm(`确定删除选中的 ${count} 个项目？`)) return
-  let failCount = 0
-  for (const item of selectedItems) {
-    try {
-      await githubApi(item.path, 'DELETE', { sha: item.sha, message: '批量删除' })
-    } catch (e) {
-      failCount++
-    }
-  }
-  if (failCount > 0) alert(`操作完成，${failCount} 个项目删除失败`)
-  else alert('批量删除成功')
-  await renderFileList(currentPath)
-  await loadTree()
-}
-
-async function doPaste() {
-  if (!copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
-  const isCut = copyCache.action === 'cut'
-  let failCount = 0
-  for (const item of copyCache.list) {
-    const newPath = `${currentPath}/${item.name}`
-    try {
-      const raw = await githubApi(item.path)
-      await githubApi(newPath, 'PUT', { message: `粘贴 ${item.name}`, content: raw.content })
-      if (isCut) await githubApi(item.path, 'DELETE', { sha: raw.sha, message: '剪切删除原文件' })
-    } catch (e) {
-      failCount++
-    }
-  }
-  copyCache = { list: [], action: '' }
-  if (failCount > 0) alert(`粘贴完成，${failCount} 个项目失败`)
-  else alert('粘贴成功')
-  await navigateTo(currentPath)
-}
 
 document.getElementById('viewIcon').addEventListener('click', async () => {
   viewMode = 'icon'
@@ -920,8 +1047,7 @@ document.getElementById('viewList').addEventListener('click', async () => {
 
 document.getElementById('toggleDate').addEventListener('change', async e => {
   showDatePrefix = e.target.checked
-  await loadTree()
-  await renderFileList(currentPath)
+  await refreshCurrentDir()
 })
 
 window.onload = async () => {
@@ -929,8 +1055,7 @@ window.onload = async () => {
   showDatePrefix = document.getElementById('toggleDate').checked
   multiSelectMode = document.getElementById('toggleMulti').checked
   uploadPanel.classList.add('hidden')
-  await loadTree()
-  await renderFileList(currentPath)
+  await refreshCurrentDir()
 }
 </script>
 </body>
