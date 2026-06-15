@@ -93,7 +93,6 @@
       font-size: 16px;
     }
   </style>
-  <!-- 移除vite模板插值，避免构建报错 -->
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
 </head>
 <body>
@@ -175,14 +174,14 @@
     }
 
     function noCacheUrl(raw) {
-      return `${raw}?_t=${Date.now()}`
+      return raw + '?_t=' + Date.now()
     }
 
     function generateThumb(rawImgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.src = noCacheUrl(rawImgSrc)
-      img.onload = () => {
+      img.onload = function() {
         const canvas = document.createElement('canvas')
         canvas.width = THUMB_W
         canvas.height = THUMB_H
@@ -196,17 +195,18 @@
         img.src = ''
         callback(canvas.toDataURL('image/jpeg', 0.82))
       }
-      img.onerror = () => {
-        callback(`data:image/svg+xml;utf8,<svg width="${THUMB_W}" height="${THUMB_H}"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">加载失败</text></svg>`)
+      img.onerror = function() {
+        const svg = '<svg width="' + THUMB_W + '" height="' + THUMB_H + '"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">加载失败</text></svg>'
+        callback('data:image/svg+xml;utf8,' + svg)
       }
     }
 
     function getExif(rawPath) {
-      return new Promise(res => {
+      return new Promise(function(res) {
         const img = new Image()
         img.crossOrigin = 'anonymous'
         img.src = noCacheUrl(rawPath)
-        img.onload = () => {
+        img.onload = function() {
           try {
             const allExif = piexif.load(img.src)
             const ifd0 = allExif['0th'] || {}
@@ -215,24 +215,32 @@
             const time = ex[piexif.ExifIFD.DateTimeOriginal] || '无拍摄时间'
             const camera = ifd0[piexif.ImageIFD.Model] || '未知设备'
             const exp = []
-            if(ex[piexif.ExifIFD.FNumber]) exp.push(`f/${piexif.GPSHelper.dmsToDeg(ex[piexif.ExifIFD.FNumber])}`)
-            if(ex[piexif.ExifIFD.ExposureTime]) exp.push(`1/${Math.round(1/piexif.GPSHelper.dmsToDeg(ex[piexif.ExifIFD.ExposureTime]))}s`)
-            if(ex[piexif.ExifIFD.ISOSpeedRatings]) exp.push(`ISO${ex[piexif.ExifIFD.ISOSpeedRatings]}`)
+            if(ex[piexif.ExifIFD.FNumber]) {
+              exp.push('f/' + piexif.GPSHelper.dmsToDeg(ex[piexif.ExifIFD.FNumber]))
+            }
+            if(ex[piexif.ExifIFD.ExposureTime]) {
+              exp.push('1/' + Math.round(1/piexif.GPSHelper.dmsToDeg(ex[piexif.ExifIFD.ExposureTime])) + 's')
+            }
+            if(ex[piexif.ExifIFD.ISOSpeedRatings]) {
+              exp.push('ISO' + ex[piexif.ExifIFD.ISOSpeedRatings])
+            }
             const expStr = exp.length ? exp.join(' ') : '无曝光数据'
             let gpsStr = '无GPS坐标'
             if(gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]){
               const lat = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLatitude])
               const lon = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLongitude])
-              gpsStr = `纬度${lat.toFixed(6)} 经度${lon.toFixed(6)}`
+              gpsStr = '纬度' + lat.toFixed(6) + ' 经度' + lon.toFixed(6)
             }
             img.src = ''
-            res({time,camera,expStr,gpsStr})
+            res({time:time,camera:camera,expStr:expStr,gpsStr:gpsStr})
           }catch(e){
             img.src=''
             res({time:'读取失败',camera:'读取失败',expStr:'读取失败',gpsStr:'读取失败'})
           }
         }
-        img.onerror = ()=>res({time:'图片异常',camera:'图片异常',expStr:'图片异常',gpsStr:'图片异常'})
+        img.onerror = function(){
+          res({time:'图片异常',camera:'图片异常',expStr:'图片异常',gpsStr:'图片异常'})
+        }
       })
     }
 
@@ -242,14 +250,14 @@
       document.onmousemove = null
       document.onmouseup = null
       const s = {scale:1,x:0,y:0,drag:false,sx:0,sy:0}
-      dom.previewImg.style.transform = `translate(0,0) scale(1)`
-      dom.previewImg.addEventListener('wheel',e=>{
+      dom.previewImg.style.transform = 'translate(0,0) scale(1)'
+      dom.previewImg.addEventListener('wheel',function(e){
         e.preventDefault()
-        const d = e.deltaY>0?-0.12:0.12
+        const d = e.deltaY>0 ? -0.12 : 0.12
         s.scale = Math.max(0.4, Math.min(s.scale+d,3.2))
-        dom.previewImg.style.transform = `translate(${s.x}px,${s.y}px) scale(${s.scale})`
+        dom.previewImg.style.transform = 'translate(' + s.x + 'px,' + s.y + 'px) scale(' + s.scale + ')'
       },{passive:false})
-      dom.previewImg.addEventListener('mousedown',e=>{
+      dom.previewImg.addEventListener('mousedown',function(e){
         s.drag=true
         s.sx=e.clientX-s.x
         s.sy=e.clientY-s.y
@@ -257,7 +265,7 @@
           if(!s.drag)return
           s.x=e.clientX-s.sx
           s.y=e.clientY-s.sy
-          dom.previewImg.style.transform = `translate(${s.x}px,${s.y}px) scale(${s.scale})`
+          dom.previewImg.style.transform = 'translate(' + s.x + 'px,' + s.y + 'px) scale(' + s.scale + ')'
         }
         function up(){
           s.drag=false
@@ -271,7 +279,7 @@
 
     async function loadDetail(albumFolder, photoName) {
       clearAllCache()
-      const raw = `${STATIC_ROOT}${albumFolder}/${photoName}`
+      const raw = STATIC_ROOT + albumFolder + '/' + photoName
       dom.imgLink.value = location.origin + raw
       dom.previewImg.src = noCacheUrl(raw)
       bindDragZoom()
@@ -282,7 +290,6 @@
       dom.exifGps.textContent = exif.gpsStr
     }
 
-    // 标准glob路径，Vite开发/打包完全兼容，不会构建报错
     async function scanAlbums() {
       clearAllCache()
       const files = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager:false, import:'default' })
@@ -290,7 +297,6 @@
       const albumMap = new Map()
 
       for(const globPath in files){
-        // 剥离 /public 前缀，转为浏览器可访问路径
         const relPath = globPath.replace('/public/albums/', '')
         const pathArr = relPath.split('/')
         if(pathArr.length < 2) continue
@@ -318,22 +324,22 @@
     async function renderList(map) {
       dom.albumList.innerHTML = ''
       if(map.size === 0){
-        dom.albumList.innerHTML = `<div class="empty-tip">未识别相册<br>规则：public/albums/YYYY-MM-DD-相册名/图片</div>`
+        dom.albumList.innerHTML = '<div class="empty-tip">未识别相册<br>规则：public/albums/YYYY-MM-DD-相册名/图片</div>'
         return
       }
       const showDate = dom.toggleDate.checked
       for(const [folderKey, album] of map){
         if(album.files.length === 0) continue
-        const firstImgSrc = `${STATIC_ROOT}${folderKey}/${album.files[0]}`
+        const firstImgSrc = STATIC_ROOT + folderKey + '/' + album.files[0]
         const item = document.createElement('div')
         item.className = 'album-item'
         const showName = showDate ? album.full : album.pure
-        generateThumb(firstImgSrc, thumb=>{
-          item.innerHTML = `<img class="album-thumb" src="${thumb}"><div class="album-name">${showName}</div>`
+        generateThumb(firstImgSrc, function(thumb){
+          item.innerHTML = '<img class="album-thumb" src="' + thumb + '"><div class="album-name">' + showName + '</div>'
         })
-        item.addEventListener('click', ()=>{
+        item.addEventListener('click', function(){
           clearAllCache()
-          location.hash = `album=${encodeURIComponent(folderKey)}&photo=${encodeURIComponent(album.files[0])}`
+          location.hash = 'album=' + encodeURIComponent(folderKey) + '&photo=' + encodeURIComponent(album.files[0])
         })
         dom.albumList.appendChild(item)
       }
@@ -360,36 +366,37 @@
       }
     }
 
-    dom.backBtn.onclick = ()=>{
+    dom.backBtn.onclick = function(){
       clearAllCache()
       location.hash = ''
     }
-    dom.copyLink.onclick = async ()=>{
+    // 修复点：catch 必须携带参数，不能空括号 catch()
+    dom.copyLink.onclick = async function(){
       try{
         await navigator.clipboard.writeText(dom.imgLink.value)
         alert('复制成功')
-      }catch(){
+      }catch(err){
         alert('手动复制链接')
       }
     }
-    dom.toggleDate.addEventListener('change', async ()=>{
+    dom.toggleDate.addEventListener('change', async function(){
       clearAllCache()
       await scanAlbums()
       await switchPage()
     })
-    window.addEventListener('hashchange', async ()=>{
+    window.addEventListener('hashchange', async function(){
       clearAllCache()
       await scanAlbums()
       await switchPage()
     })
-    document.addEventListener('visibilitychange', async ()=>{
+    document.addEventListener('visibilitychange', async function(){
       if(document.visibilityState === 'visible'){
         clearAllCache()
         await scanAlbums()
         await switchPage()
       }
     })
-    window.addEventListener('load', async ()=>{
+    window.addEventListener('load', async function(){
       await scanAlbums()
       await switchPage()
     })
