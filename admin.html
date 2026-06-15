@@ -96,9 +96,8 @@
     </div>
   </div>
 
-  <!-- CDN 引入 2FA、二维码库 -->
+  <!-- 只保留 QRCode 库，去掉 otpauth -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/otpauth@9.2.2/dist/otpauth.umd.min.js"></script>
 
   <script>
     const STORAGE_CONFIG = 'album_global_config'
@@ -138,7 +137,89 @@
       return { owner: arr[0], repo: arr[1] }
     }
 
-    // ========== 2. 2FA 双重认证逻辑（修复版） ==========
+    // ========== 2. 原生 TOTP 实现（不依赖 otpauth 库） ==========
+    // 工具函数：Base32 解码
+    function base32Decode(encoded) {
+      const base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      let bits = "";
+      let bytes = [];
+      for (let i = 0; i < encoded.length; i++) {
+        let val = base32chars.indexOf(encoded[i].toUpperCase());
+        bits += val.toString(2).padStart(5, '0');
+      }
+      for (let i = 0; i + 8 <= bits.length; i += 8) {
+        bytes.push(parseInt(bits.substr(i, 8), 2));
+      }
+      return new Uint8Array(bytes);
+    }
+
+    // 工具函数：生成随机 Base32 密钥
+    function generateSecret(length = 16) {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      let secret = "";
+      for (let i = 0; i < length; i++) {
+        secret += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return secret;
+    }
+
+    // 工具函数：计算 TOTP 验证码
+    async function calculateTOTP(secret, digits = 6, period = 30) {
+      const key = base32Decode(secret);
+      const epoch = Math.floor(Date.now() / 1000);
+      const time = Math.floor(epoch / period);
+      const timeBytes = new Uint8Array(8);
+      for (let i = 0; i < 8; i++) {
+        timeBytes[7 - i] = (time >> (i * 8)) & 0xff;
+      }
+
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
+      );
+      const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
+      const hmacResult = new Uint8Array(hmac);
+
+      const offset = hmacResult[hmacResult.length - 1] & 0xf;
+      const code =
+        ((hmacResult[offset] & 0x7f) << 24) |
+        ((hmacResult[offset + 1] & 0xff) << 16) |
+        ((hmacResult[offset + 2] & 0xff) << 8) |
+        (hmacResult[offset + 3] & 0xff);
+
+      return (code % Math.pow(10, digits)).toString().padStart(digits, '0');
+    }
+
+    // 验证 TOTP 验证码（支持前后各1个时间窗口）
+    async function verifyTOTP(secret, token, digits = 6, period = 30) {
+      const epoch = Math.floor(Date.now() / 1000);
+      for (let i = -1; i <= 1; i++) {
+        const time = Math.floor(epoch / period) + i;
+        const key = base32Decode(secret);
+        const timeBytes = new Uint8Array(8);
+        for (let j = 0; j < 8; j++) {
+          timeBytes[7 - j] = (time >> (j * 8)) & 0xff;
+        }
+
+        const cryptoKey = await crypto.subtle.importKey(
+          "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
+        );
+        const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
+        const hmacResult = new Uint8Array(hmac);
+
+        const offset = hmacResult[hmacResult.length - 1] & 0xf;
+        const code =
+          ((hmacResult[offset] & 0x7f) << 24) |
+          ((hmacResult[offset + 1] & 0xff) << 16) |
+          ((hmacResult[offset + 2] & 0xff) << 8) |
+          (hmacResult[offset + 3] & 0xff);
+
+        const totp = (code % Math.pow(10, digits)).toString().padStart(digits, '0');
+        if (totp === token) return true;
+      }
+      return false;
+    }
+
+    // ========== 3. 2FA 绑定/登录逻辑 ==========
     const twofaBindArea = document.getElementById('2faBindArea')
     const loginArea = document.getElementById('loginArea')
     const fileManageArea = document.getElementById('fileManageArea')
@@ -160,26 +241,20 @@
       }
     }
 
-    // 【修复】生成2FA密钥+二维码
+    // 生成2FA密钥+二维码
     gen2faBtn.addEventListener('click', async () => {
       try {
         // 1. 生成16位随机密钥
-        const secret = new Otpauth.Secret(16)
-        otpSecret = secret.base32
+        otpSecret = generateSecret(16)
         secretKeyDom.innerText = otpSecret
         console.log('生成的密钥:', otpSecret)
 
         // 2. 生成OTP链接
-        const totp = new Otpauth.TOTP({
-          issuer: 'EdgeOne相册系统',
-          label: '相册后台',
-          secret: secret
-        })
-        const otpUrl = totp.toString()
+        const otpUrl = `otpauth://totp/EdgeOne相册系统:相册后台?secret=${otpSecret}&issuer=EdgeOne相册系统&algorithm=SHA1&digits=6&period=30`
         console.log('OTP链接:', otpUrl)
 
-        // 3. 生成二维码（改用Promise + 直接创建canvas元素）
-        qrCodeDom.innerHTML = '' // 清空之前的内容
+        // 3. 生成二维码
+        qrCodeDom.innerHTML = ''
         const canvas = document.createElement('canvas')
         await QRCode.toCanvas(canvas, otpUrl, { 
           width: 200, 
@@ -199,11 +274,11 @@
     })
 
     // 验证并保存密钥
-    verify2faBtn.addEventListener('click', () => {
+    verify2faBtn.addEventListener('click', async () => {
       const code = document.getElementById('2faCode').value.trim()
       if (!otpSecret || code.length !== 6) return alert('请先生成密钥并输入6位验证码')
-      const totp = new Otpauth.TOTP({ secret: otpSecret })
-      if (totp.validate({ token: code, window: 1 })) {
+      const isValid = await verifyTOTP(otpSecret, code)
+      if (isValid) {
         localStorage.setItem(STORAGE_2FA, otpSecret)
         alert('绑定成功，请使用验证码登录')
         location.reload()
@@ -213,19 +288,19 @@
     })
 
     // 登录验证
-    loginBtn.addEventListener('click', () => {
+    loginBtn.addEventListener('click', async () => {
       const code = document.getElementById('loginCode').value.trim()
-      const totp = new Otpauth.TOTP({ secret: otpSecret })
-      if (totp.validate({ token: code, window: 1 })) {
+      const isValid = await verifyTOTP(otpSecret, code)
+      if (isValid) {
         loginArea.style.display = 'none'
         fileManageArea.style.display = 'block'
-        loadFileList() // 加载仓库文件列表
+        loadFileList()
       } else {
         alert('验证码错误')
       }
     })
 
-    // ========== 3. GitHub API 工具函数 ==========
+    // ========== 4. GitHub API 工具函数 ==========
     async function githubApi(path, method = 'GET', body = null) {
       const { owner, repo } = parseRepo()
       const headers = {
@@ -239,7 +314,7 @@
       return res.json()
     }
 
-    // ========== 4. 文件管理：增删改查 ==========
+    // ========== 5. 文件管理：增删改查 ==========
     const fileList = document.getElementById('fileList')
     const addFolderBtn = document.getElementById('addFolder')
     const newFolderInput = document.getElementById('newFolder')
@@ -258,7 +333,7 @@
           div.innerHTML = `
             <span>${item.name} (${item.type === 'dir' ? '文件夹' : '文件'})</span>
             <div class="operate-area">
-              <button class="btn-danger del-btn" data-path="${item.path}" data-type="${item.type}">删除</button>
+              <button class="btn-danger del-btn" data-path="${item.path}" data-sha="${item.sha}">删除</button>
             </div>
           `
           fileList.appendChild(div)
@@ -267,9 +342,10 @@
         document.querySelectorAll('.del-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
             const path = btn.dataset.path
+            const sha = btn.dataset.sha
             if (!confirm(`确定删除 ${path}？`)) return
-            const res = await githubApi(path, 'DELETE', { 
-              sha: btn.dataset.sha || '',
+            await githubApi(path, 'DELETE', { 
+              sha: sha,
               message: `删除文件 ${path}`
             })
             loadFileList()
