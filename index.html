@@ -110,7 +110,7 @@
 
   <div id="albumPage">
     <div class="album-list" id="albumList">
-      <div class="empty-tip">正在扫描相册文件...</div>
+      <div class="empty-tip">正在加载相册数据...</div>
     </div>
   </div>
 
@@ -133,11 +133,12 @@
   </div>
 
   <script type="module">
+    // 静态资源根路径，直接访问 /albums/，无public前缀
     const STATIC_ROOT = '/albums/'
+    const API_URL = '/api/album-list.json'
     const THUMB_W = 200
     const THUMB_H = 150
     const FOLDER_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
-    const ALLOW_EXT = ['jpg','jpeg','png','webp']
 
     const dom = {
       albumPage: document.getElementById('albumPage'),
@@ -290,58 +291,44 @@
       dom.exifGps.textContent = exif.gpsStr
     }
 
+    // 从接口拉取相册列表，替代失效的glob
     async function scanAlbums() {
       clearAllCache()
-      const files = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager:false, import:'default' })
-      console.log('glob扫描文件列表：', files)
-      const albumMap = new Map()
-
-      for(const globPath in files){
-        const relPath = globPath.replace('/public/albums/', '')
-        const pathArr = relPath.split('/')
-        if(pathArr.length < 2) continue
-        const folderName = pathArr[0]
-        const fileName = pathArr[1]
-        const ext = fileName.split('.').pop().toLowerCase()
-        if(!ALLOW_EXT.includes(ext)) continue
-        if(!FOLDER_REG.test(folderName)) continue
-
-        if(!albumMap.has(folderName)){
-          albumMap.set(folderName, {
-            full: folderName,
-            pure: getPureAlbumName(folderName),
-            files: []
-          })
-        }
-        albumMap.get(folderName).files.push(fileName)
+      try {
+        const res = await fetch(noCacheUrl(API_URL))
+        if (!res.ok) throw new Error('接口请求失败，请先进入管理后台生成相册列表')
+        const albumMap = await res.json()
+        window._albumData = albumMap
+        await renderList(albumMap)
+      } catch (err) {
+        dom.albumList.innerHTML = '<div class="empty-tip">相册数据加载失败<br>请先访问 /admin.html 扫描生成相册列表</div>'
+        console.error('相册接口加载错误：', err)
       }
-
-      console.log('有效相册集合：', albumMap)
-      window._albumData = albumMap
-      await renderList(albumMap)
     }
 
     async function renderList(map) {
       dom.albumList.innerHTML = ''
-      if(map.size === 0){
-        dom.albumList.innerHTML = '<div class="empty-tip">未识别相册<br>规则：public/albums/YYYY-MM-DD-相册名/图片</div>'
+      if(map.size === 0 || map.length === 0){
+        dom.albumList.innerHTML = '<div class="empty-tip">未识别相册<br>文件夹命名规则：albums/YYYY-MM-DD-相册名/图片</div>'
         return
       }
       const showDate = dom.toggleDate.checked
-      for(const [folderKey, album] of map){
-        if(album.files.length === 0) continue
-        const firstImgSrc = STATIC_ROOT + folderKey + '/' + album.files[0]
-        const item = document.createElement('div')
-        item.className = 'album-item'
-        const showName = showDate ? album.full : album.pure
+      for(const item of map){
+        const folderKey = item.full
+        const albumFiles = item.files
+        if(albumFiles.length === 0) continue
+        const firstImgSrc = STATIC_ROOT + folderKey + '/' + albumFiles[0]
+        const itemDom = document.createElement('div')
+        itemDom.className = 'album-item'
+        const showName = showDate ? item.full : item.pure
         generateThumb(firstImgSrc, function(thumb){
-          item.innerHTML = '<img class="album-thumb" src="' + thumb + '"><div class="album-name">' + showName + '</div>'
+          itemDom.innerHTML = '<img class="album-thumb" src="' + thumb + '"><div class="album-name">' + showName + '</div>'
         })
-        item.addEventListener('click', function(){
+        itemDom.addEventListener('click', function(){
           clearAllCache()
-          location.hash = 'album=' + encodeURIComponent(folderKey) + '&photo=' + encodeURIComponent(album.files[0])
+          location.hash = 'album=' + encodeURIComponent(folderKey) + '&photo=' + encodeURIComponent(albumFiles[0])
         })
-        dom.albumList.appendChild(item)
+        dom.albumList.appendChild(itemDom)
       }
     }
 
@@ -370,7 +357,6 @@
       clearAllCache()
       location.hash = ''
     }
-    // 修复点：catch 必须携带参数，不能空括号 catch()
     dom.copyLink.onclick = async function(){
       try{
         await navigator.clipboard.writeText(dom.imgLink.value)
