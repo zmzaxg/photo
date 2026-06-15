@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>静态相册</title>
+  <title>我的相册</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
+    .admin-link { text-align: right; margin-bottom: 16px; }
+    .admin-link a { color: #2563eb; text-decoration: none; font-size: 14px; }
     h1 { text-align: center; margin-bottom: 30px; color: #333; }
 
-    /* 相册列表网格布局 3~4列 响应式 */
+    /* 相册列表 */
     .album-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -29,7 +31,7 @@
     .album-thumb {
       width: 100%;
       height: 150px;
-      object-fit: cover; /* 统一200*150等比裁剪 */
+      object-fit: cover;
       display: block;
     }
     .album-name {
@@ -97,67 +99,18 @@
       border-radius: 4px;
       cursor: pointer;
     }
-
-    /* 全局配置弹窗 */
-    .config-modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    }
-    .modal-box {
-      background: #fff;
-      padding: 30px;
-      border-radius: 8px;
-      width: 90%;
-      max-width: 500px;
-    }
-    .modal-box h3 { margin-bottom: 16px; }
-    .modal-box p { margin: 8px 0; color: #666; }
-    .modal-box input {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0 16px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
-    .modal-box button {
-      padding: 10px 20px;
-      background: #2563eb;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
-  <!-- 配置检测弹窗 -->
-  <div id="configModal" class="config-modal">
-    <div class="modal-box">
-      <h3>系统初始化配置</h3>
-      <p>请先填写基础配置（EdgeOne + GitHub 部署必需）</p>
-      <p>GitHub 仓库地址：</p>
-      <input type="text" id="repoUrl" placeholder="格式：https://github.com/用户名/仓库名">
-      <p>GitHub Token（权限 repo）：</p>
-      <input type="text" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
-      <button id="saveConfig">保存配置</button>
-    </div>
+  <div class="admin-link">
+    <a href="/admin.html">🔐 管理后台</a>
   </div>
 
   <!-- 相册列表页 -->
-<div id="albumPage">
-  <div style="text-align:right;margin-bottom:16px;">
-    <a href="/admin.html" style="color:#2563eb;text-decoration:none;">
-      🔐 管理后台
-    </a>
+  <div id="albumPage">
+    <h1>我的相册</h1>
+    <div class="album-list" id="albumList"></div>
   </div>
-  <h1>我的相册</h1>
-  <div class="album-list" id="albumList"></div>
-</div>
 
   <!-- 图片详情页 -->
   <div id="detailPage" class="detail-container">
@@ -178,37 +131,9 @@
     </div>
   </div>
 
-  <!-- 引入 EXIF 解析库 CDN -->
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
 
   <script type="module">
-    // ===================== 1. 全局配置检测 =====================
-    const configModal = document.getElementById('configModal')
-    const saveConfig = document.getElementById('saveConfig')
-    const repoUrlInput = document.getElementById('repoUrl')
-    const tokenInput = document.getElementById('githubToken')
-    const STORAGE_KEY = 'album_global_config'
-
-    // 读取本地配置
-    let globalConfig = JSON.parse(localStorage.getItem(STORAGE_KEY)) || null
-    if (!globalConfig) {
-      configModal.style.display = 'flex'
-    } else {
-      configModal.style.display = 'none'
-    }
-
-    // 保存配置
-    saveConfig.addEventListener('click', () => {
-      const repo = repoUrlInput.value.trim()
-      const token = tokenInput.value.trim()
-      if (!repo || !token) return alert('仓库地址和Token不能为空')
-      globalConfig = { repoUrl: repo, githubToken: token }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(globalConfig))
-      configModal.style.display = 'none'
-      initApp() // 配置完成后初始化应用
-    })
-
-    // ===================== 2. 全局变量 =====================
     const ALBUM_BASE = '/albums/'
     const THUMB_SIZE = { w: 200, h: 150 }
     const albumPage = document.getElementById('albumPage')
@@ -219,7 +144,7 @@
     const imgLink = document.getElementById('imgLink')
     const copyLink = document.getElementById('copyLink')
 
-    // 路由参数解析（hash 模式）
+    // 路由解析
     function parseHash() {
       const hash = location.hash.slice(1)
       const params = new URLSearchParams(hash)
@@ -246,12 +171,7 @@
       location.hash = ''
     })
 
-    // 监听 hash 变化（浏览器前进/后退）
-    window.addEventListener('hashchange', () => {
-      switchPage(parseHash())
-    })
-
-    // 一键复制链接
+    // 复制链接
     copyLink.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(imgLink.value)
@@ -261,7 +181,7 @@
       }
     })
 
-    // ===================== 3. Canvas 生成缩略图 =====================
+    // Canvas 生成缩略图
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -270,21 +190,18 @@
         const ctx = canvas.getContext('2d')
         canvas.width = THUMB_SIZE.w
         canvas.height = THUMB_SIZE.h
-
-        // 等比居中裁剪 object-fit: cover
         const scale = Math.max(canvas.width / img.width, canvas.height / img.height)
         const w = img.width * scale
         const h = img.height * scale
         const x = (canvas.width - w) / 2
         const y = (canvas.height - h) / 2
-
         ctx.drawImage(img, x, y, w, h)
         callback(canvas.toDataURL('image/jpeg', 0.8))
       }
       img.src = imgSrc
     }
 
-    // ===================== 4. 解析 EXIF 信息 =====================
+    // 解析 EXIF
     function parseExif(imgUrl) {
       return new Promise((resolve) => {
         const img = new Image()
@@ -294,12 +211,8 @@
           const ifd0 = exif['0th'] || {}
           const exifInfo = exif.Exif || {}
           const gps = exif.GPS || {}
-
-          // 拍摄时间
           const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
-          // 相机型号
           const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
-          // 曝光参数
           const exp = []
           if (exifInfo[piexif.ExifIFD.FNumber]) {
             exp.push(`光圈 f/${piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])}`)
@@ -308,58 +221,53 @@
             exp.push(`快门 1/${Math.round(1 / piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime]))}s`)
           }
           const expStr = exp.join(' ') || '暂无'
-          // GPS 坐标
           let gpsStr = '暂无'
           if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
             const lat = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLatitude])
             const lon = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLongitude])
             gpsStr = `纬度:${lat.toFixed(6)} 经度:${lon.toFixed(6)}`
           }
-
           resolve({ takeTime, camera, expStr, gpsStr })
         }
         img.src = imgUrl
       })
     }
 
-    // ===================== 5. 图片预览 缩放+拖拽 =====================
+    // 图片缩放拖拽
     let scale = 1
     let isDrag = false
-    let startX, startY, moveX, moveY
-
+    let moveX = 0, moveY = 0
     function initDragZoom() {
       scale = 1
+      moveX = 0
+      moveY = 0
       previewImg.style.transform = `scale(${scale}) translate(0,0)`
-      // 滚轮缩放
       previewImg.addEventListener('wheel', (e) => {
         e.preventDefault()
         scale += e.deltaY > 0 ? -0.1 : 0.1
         scale = Math.max(0.5, Math.min(scale, 3))
         previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
       })
-      // 拖拽
       previewImg.addEventListener('mousedown', (e) => {
         isDrag = true
-        startX = e.clientX - moveX
-        startY = e.clientY - moveY
+        const startX = e.clientX - moveX
+        const startY = e.clientY - moveY
+        document.addEventListener('mousemove', (e) => {
+          if (!isDrag) return
+          moveX = e.clientX - startX
+          moveY = e.clientY - startY
+          previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
+        })
+        document.addEventListener('mouseup', () => isDrag = false)
       })
-      document.addEventListener('mousemove', (e) => {
-        if (!isDrag) return
-        moveX = e.clientX - startX
-        moveY = e.clientY - startY
-        previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
-      })
-      document.addEventListener('mouseup', () => isDrag = false)
     }
 
-    // ===================== 6. 加载图片详情 =====================
+    // 加载图片详情
     async function loadPhotoDetail(albumName, photoName) {
       const fullUrl = `${ALBUM_BASE}${albumName}/${photoName}`
       imgLink.value = location.origin + fullUrl
       previewImg.src = fullUrl
       initDragZoom()
-
-      // 解析 EXIF
       const exifData = await parseExif(fullUrl)
       document.getElementById('exifTime').innerText = exifData.takeTime
       document.getElementById('exifCamera').innerText = exifData.camera
@@ -367,55 +275,37 @@
       document.getElementById('exifGps').innerText = exifData.gpsStr
     }
 
-    // ===================== 7. 扫描相册目录 (Vite glob) =====================
+    // 扫描相册目录（纯静态，无 API）
     async function scanAlbums() {
-      // 动态导入 public/albums 下所有图片
-      const imageModules = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', {
-        eager: false,
-        import: 'default'
-      })
-
+      // Vite 动态导入 public/albums 下所有图片
+      const imageModules = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' })
       const albumMap = new Map()
-      const regAlbum = /^(\d{4}-\d{2}-\d{2})-(.+)$/ // 匹配 YYYY-MM-dd-名称
-
-      // 遍历所有图片路径
+      const regAlbum = /^(\d{4}-\d{2}-\d{2})-(.+)$/
       for (const path in imageModules) {
-        // 路径示例：/public/albums/2024-05-20-vacation/1.jpg
         const pathArr = path.replace('/public/albums/', '').split('/')
         const folderName = pathArr[0]
         const fileName = pathArr[1]
-
         const match = folderName.match(regAlbum)
-        if (!match) continue // 跳过不符合命名规则的文件夹
-
+        if (!match) continue
         const [_, date, name] = match
         const albumKey = folderName
         if (!albumMap.has(albumKey)) {
-          albumMap.set(albumKey, {
-            date,
-            name,
-            files: []
-          })
+          albumMap.set(albumKey, { date, name, files: [] })
         }
         albumMap.get(albumKey).files.push(fileName)
       }
-
       // 渲染相册列表
       albumList.innerHTML = ''
       for (const [folderName, info] of albumMap) {
         const firstImg = `${ALBUM_BASE}${folderName}/${info.files[0]}`
         const item = document.createElement('div')
         item.className = 'album-item'
-
-        // 生成缩略图
         createThumbnail(firstImg, (thumbUrl) => {
           item.innerHTML = `
             <img class="album-thumb" src="${thumbUrl}" alt="${info.name}">
             <div class="album-name">${info.date} ${info.name}</div>
           `
         })
-
-        // 点击进入相册第一张图
         item.addEventListener('click', () => {
           location.hash = `album=${folderName}&photo=${info.files[0]}`
         })
@@ -423,14 +313,14 @@
       }
     }
 
-    // ===================== 8. 应用入口 =====================
-    function initApp() {
-      scanAlbums()
+    // 监听 hash 变化
+    window.addEventListener('hashchange', () => {
       switchPage(parseHash())
-    }
+    })
 
-    // 配置存在则直接初始化
-    if (globalConfig) initApp()
+    // 初始化
+    scanAlbums()
+    switchPage(parseHash())
   </script>
 </body>
 </html>
