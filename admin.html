@@ -262,10 +262,32 @@
       text-align: center;
       min-width: 220px;
       padding: 30px 20px;
+      position: relative;
     }
     .loading-text {
       font-size: 14px;
       color: #333;
+    }
+    /* 倒计时圆形按钮 */
+    .loading-countdown-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .loading-countdown-btn.timeout {
+      background: #d83b01;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -317,6 +339,8 @@
 
 <div class="modal loading-modal" id="loadingModal">
   <div class="modal-box">
+    <!-- 倒计时关闭按钮 -->
+    <button class="loading-countdown-btn" id="loadingCountBtn">10</button>
     <div class="loading-text">正在处理，请稍候...</div>
   </div>
 </div>
@@ -389,11 +413,29 @@ let copyCache = { path: '', name: '', type: '', action: '', list: [] }
 let selectedItems = []
 const API_BASE = 'https://api.github.com'
 const loadingModal = document.getElementById('loadingModal')
+const loadingCountBtn = document.getElementById('loadingCountBtn')
 
 // 全局唯一加载锁：所有API操作共用，防止并发重复操作
 let isGlobalLoading = false;
+let loadingTimer = null;
+const MAX_LOAD_SECONDS = 10;
+let currentCount = MAX_LOAD_SECONDS;
 
-// 统一开启加载遮罩 + 禁用全部操作按钮
+// 强制关闭加载遮罩兜底函数
+function forceEndLoading() {
+  clearInterval(loadingTimer);
+  isGlobalLoading = false;
+  loadingModal.style.display = 'none';
+  currentCount = MAX_LOAD_SECONDS;
+  loadingCountBtn.textContent = currentCount;
+  loadingCountBtn.classList.remove('timeout');
+  // 恢复全部按钮可用
+  document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
+    btn.disabled = false;
+  })
+}
+
+// 统一开启加载遮罩 + 禁用全部操作按钮 + 启动10秒倒计时
 function startLoading() {
   if(isGlobalLoading) return;
   isGlobalLoading = true;
@@ -402,16 +444,35 @@ function startLoading() {
   document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
     btn.disabled = true;
   })
+  // 重置倒计时
+  clearInterval(loadingTimer);
+  currentCount = MAX_LOAD_SECONDS;
+  loadingCountBtn.textContent = currentCount;
+  loadingCountBtn.classList.remove('timeout');
+  loadingTimer = setInterval(() => {
+    currentCount--;
+    loadingCountBtn.textContent = currentCount;
+    if(currentCount <= 0) {
+      clearInterval(loadingTimer);
+      loadingCountBtn.textContent = '×';
+      loadingCountBtn.classList.add('timeout');
+    }
+  }, 1000)
 }
 
-// 统一关闭加载遮罩 + 恢复按钮可用
+// 统一正常关闭加载遮罩（接口正常完成调用）
 function endLoading() {
-  isGlobalLoading = false;
-  loadingModal.style.display = 'none';
-  document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
-    btn.disabled = false;
-  })
+  if(!isGlobalLoading) return;
+  forceEndLoading();
 }
+
+// 右上角关闭按钮点击事件
+loadingCountBtn.addEventListener('click', () => {
+  if(isGlobalLoading) {
+    alert('已强制终止加载，部分后台请求可能仍在执行，数据存在不一致风险！');
+    forceEndLoading();
+  }
+})
 
 function checkConfig() {
   globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
