@@ -7,11 +7,23 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap:12px; }
     .admin-link a { color: #2563eb; text-decoration: none; font-size: 14px; }
     .date-switch { font-size:14px; }
-    h1 { color: #333; }
+    h1 { color: #333; font-size:24px; }
 
+    .back-row { margin-bottom:20px; display:none; }
+    .back-btn {
+      padding: 8px 16px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    /* 首页相册文件夹列表 */
     .album-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -41,17 +53,39 @@
       font-size: 14px;
     }
 
-    .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
-    .back-btn {
-      padding: 8px 16px;
-      background: #2563eb;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-bottom: 20px;
-      font-size: 14px;
+    /* 相册内图片缩略图列表 */
+    .photo-grid-page { display: none; max-width:1400px; margin:0 auto; }
+    .photo-grid-title { margin-bottom:20px; font-size:18px; color:#333; }
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap:16px;
     }
+    .photo-card {
+      background:#fff;
+      border-radius:8px;
+      overflow:hidden;
+      box-shadow:0 2px 6px rgba(0,0,0,0.08);
+      cursor:pointer;
+      transition:transform 0.2s;
+    }
+    .photo-card:hover { transform: translateY(-3px); }
+    .photo-card-thumb {
+      width:100%;
+      height:120px;
+      object-fit:cover;
+      display:block;
+    }
+    .photo-fullname {
+      padding:8px;
+      font-size:12px;
+      color:#555;
+      text-align:center;
+      word-break:break-all;
+    }
+
+    /* 单图详情页 */
+    .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
     .img-wrapper {
       position: relative;
       margin: 0 auto 20px;
@@ -85,7 +119,7 @@
 <body>
   <div class="header">
     <h1>我的相册</h1>
-    <div style="display:flex; gap:20px; align-items:center;">
+    <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
       <label class="date-switch">
         <input type="checkbox" id="homeToggleDate"> 显示文件夹日期前缀
       </label>
@@ -95,12 +129,24 @@
     </div>
   </div>
 
+  <!-- 返回按钮通用 -->
+  <div class="back-row" id="backRow">
+    <button class="back-btn" id="backBtn">← 返回</button>
+  </div>
+
+  <!-- 首页：所有相册文件夹 -->
   <div id="albumPage">
     <div class="album-list" id="albumList"></div>
   </div>
 
+  <!-- 第二层：当前相册内全部图片缩略图列表 -->
+  <div id="photoGridPage" class="photo-grid-page">
+    <div class="photo-grid-title" id="photoGridTitle"></div>
+    <div class="photo-grid" id="photoGrid"></div>
+  </div>
+
+  <!-- 第三层：单张图片详情大图预览 -->
   <div id="detailPage" class="detail-container">
-    <button class="back-btn" id="backBtn">← 返回相册列表</button>
     <div class="img-wrapper">
       <img id="previewImg" class="preview-img" alt="预览图">
     </div>
@@ -110,6 +156,7 @@
         <input type="text" id="imgLink" class="link-input" readonly>
         <button class="copy-btn" id="copyLink">一键复制</button>
       </div>
+      <div class="info-item"><strong>完整文件名：</strong><span id="detailFileName">暂无</span></div>
       <div class="info-item"><strong>EXIF 拍摄时间：</strong><span id="exifTime">暂无</span></div>
       <div class="info-item"><strong>相机型号：</strong><span id="exifCamera">暂无</span></div>
       <div class="info-item"><strong>曝光参数：</strong><span id="exifParam">暂无</span></div>
@@ -122,44 +169,88 @@
     const ALBUM_BASE = '/albums/'
     const THUMB_SIZE = { w: 200, h: 150 }
     let showDate = false
+    let currentAlbumFolder = ''
+
+    // 页面DOM
     const albumPage = document.getElementById('albumPage')
+    const photoGridPage = document.getElementById('photoGridPage')
     const detailPage = document.getElementById('detailPage')
-    const albumList = document.getElementById('albumList')
+    const backRow = document.getElementById('backRow')
     const backBtn = document.getElementById('backBtn')
+    const albumList = document.getElementById('albumList')
+    const photoGrid = document.getElementById('photoGrid')
+    const photoGridTitle = document.getElementById('photoGridTitle')
     const previewImg = document.getElementById('previewImg')
     const imgLink = document.getElementById('imgLink')
     const copyLink = document.getElementById('copyLink')
+    const detailFileName = document.getElementById('detailFileName')
     const homeToggleDate = document.getElementById('homeToggleDate')
 
-    // 名称处理
+    // 去除日期前缀
     function pureName(fullName) {
       const reg = /^\d{4}-\d{2}-\d{2}-/
       return reg.test(fullName) ? fullName.replace(reg, '') : fullName
     }
 
-    // 路由
+    // 解析哈希路由
     function parseHash() {
       const hash = location.hash.slice(1)
       const params = new URLSearchParams(hash)
-      return { album: params.get('album'), photo: params.get('photo') }
-    }
-    function switchPage({ album, photo }) {
-      if (album && photo) {
-        albumPage.style.display = 'none'
-        detailPage.style.display = 'block'
-        loadPhotoDetail(album, photo)
-      } else {
-        albumPage.style.display = 'block'
-        detailPage.style.display = 'none'
+      return {
+        album: params.get('album'),
+        photo: params.get('photo')
       }
     }
-    backBtn.addEventListener('click', () => location.hash = '')
-    copyLink.addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(imgLink.value); alert('复制成功') }
-      catch { alert('手动复制') }
+
+    // 页面切换逻辑分层
+    function switchPage({ album, photo }) {
+      // 全部隐藏
+      albumPage.style.display = 'none'
+      photoGridPage.style.display = 'none'
+      detailPage.style.display = 'none'
+      backRow.style.display = 'none'
+
+      if (album && photo) {
+        // 第三层：单图详情
+        backRow.style.display = 'block'
+        detailPage.style.display = 'block'
+        loadPhotoDetail(album, photo)
+      } else if (album) {
+        // 第二层：相册图片列表
+        backRow.style.display = 'block'
+        photoGridPage.style.display = 'block'
+        currentAlbumFolder = album
+        renderPhotoGrid(album)
+      } else {
+        // 第一层：相册首页
+        albumPage.style.display = 'block'
+        scanAlbums()
+      }
+    }
+
+    // 返回按钮逻辑
+    backBtn.addEventListener('click', () => {
+      const { photo } = parseHash()
+      if (photo) {
+        // 从详情返回相册图片列表
+        location.hash = `album=${currentAlbumFolder}`
+      } else {
+        // 从图片列表返回首页
+        location.hash = ''
+      }
     })
 
-    // 缩略图
+    // 复制链接
+    copyLink.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(imgLink.value)
+        alert('复制成功')
+      } catch {
+        alert('复制失败，请手动复制')
+      }
+    })
+
+    // 生成缩略图
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -177,7 +268,7 @@
       img.src = imgSrc
     }
 
-    // EXIF
+    // 解析EXIF信息
     function parseExif(imgUrl) {
       return new Promise(resolve => {
         const img = new Image()
@@ -190,8 +281,14 @@
           const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
           const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
           let exp = []
-          if (exifInfo[piexif.ExifIFD.FNumber]) exp.push(`光圈 f/${piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])}`)
-          if (exifInfo[piexif.ExifIFD.ExposureTime]) exp.push(`快门 1/${Math.round(1 / piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime]))}s`)
+          if (exifInfo[piexif.ExifIFD.FNumber]) {
+            const f = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])
+            exp.push(`光圈 f/${f}`)
+          }
+          if (exifInfo[piexif.ExifIFD.ExposureTime]) {
+            const s = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime])
+            exp.push(`快门 1/${Math.round(1 / s)}s`)
+          }
           const expStr = exp.join(' ') || '暂无'
           let gpsStr = '暂无'
           if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
@@ -205,34 +302,36 @@
       })
     }
 
-    // 图片缩放拖拽
+    // 图片拖拽缩放
     let scale = 1, isDrag = false, moveX = 0, moveY = 0
     function initDragZoom() {
       scale = 1; moveX = 0; moveY = 0
       previewImg.style.transform = `scale(${scale}) translate(0,0)`
-      previewImg.addEventListener('wheel', e => {
+      previewImg.onwheel = e => {
         e.preventDefault()
         scale += e.deltaY > 0 ? -0.1 : 0.1
         scale = Math.max(0.5, Math.min(scale, 3))
         previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
-      })
-      previewImg.addEventListener('mousedown', e => {
+      }
+      previewImg.onmousedown = e => {
         isDrag = true
-        const sX = e.clientX - moveX
-        const sY = e.clientY - moveY
-        document.addEventListener('mousemove', e => {
+        const startX = e.clientX - moveX
+        const startY = e.clientY - moveY
+        document.onmousemove = ev => {
           if (!isDrag) return
-          moveX = e.clientX - sX
-          moveY = e.clientY - sY
+          moveX = ev.clientX - startX
+          moveY = ev.clientY - startY
           previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
-        })
-        document.addEventListener('mouseup', () => isDrag = false)
-      })
+        }
+        document.onmouseup = () => isDrag = false
+      }
     }
 
+    // 加载单张图片详情
     async function loadPhotoDetail(albumName, photoName) {
       const fullUrl = `${ALBUM_BASE}${albumName}/${photoName}`
       imgLink.value = location.origin + fullUrl
+      detailFileName.innerText = photoName
       previewImg.src = fullUrl
       initDragZoom()
       const exifData = await parseExif(fullUrl)
@@ -242,8 +341,91 @@
       document.getElementById('exifGps').innerText = exifData.gpsStr
     }
 
-    // 扫描相册（纯静态）
+    // 扫描所有相册文件夹
     async function scanAlbums() {
+      const imageModules = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' })
+      const albumMap = new Map()
+      const regAlbum = /^(\d{4}-\d{2}-\d{2})-(.+)$/
+      for (const path in imageModules) {
+        const pathArr = path.replace('/public/albums/', '').split('/')
+        const folderName = pathArr[0]
+        const fileName = pathArr[1]
+        const match = folderName.match(regAlbum)
+        if (!match) continue
+        const [_, date, name] = match
+        if (!albumMap.has(folderName)) {
+          albumMap.set(folderName, { date, name, files: [] })
+        }
+        albumMap.get(folderName).files.push(fileName)
+      }
+      renderAlbumList(albumMap)
+    }
+
+    // 渲染首页相册文件夹列表
+    function renderAlbumList(map) {
+      albumList.innerHTML = ''
+      for (const [folderName, info] of map) {
+        const firstImg = `${ALBUM_BASE}${folderName}/${info.files[0]}`
+        const item = document.createElement('div')
+        item.className = 'album-item'
+        const showName = showDate ? folderName : pureName(folderName)
+        createThumbnail(firstImg, thumb => {
+          item.innerHTML = `<img class="album-thumb" src="${thumb}"><div class="album-name">${showName}</div>`
+        })
+        // 点击进入相册图片列表，而非直接打开图片
+        item.addEventListener('click', () => {
+          location.hash = `album=${folderName}`
+        })
+        albumList.appendChild(item)
+      }
+    }
+
+    // 渲染相册内全部图片缩略图列表
+    function renderPhotoGrid(folderName) {
+      const info = getAlbumInfo(folderName)
+      if (!info) return
+      const showTitle = showDate ? folderName : pureName(folderName)
+      photoGridTitle.innerText = `相册：${showTitle}（共${info.files.length}张）`
+      photoGrid.innerHTML = ''
+
+      // 循环渲染所有图片卡片
+      for (const fileName of info.files) {
+        const imgSrc = `${ALBUM_BASE}${folderName}/${fileName}`
+        const card = document.createElement('div')
+        card.className = 'photo-card'
+        createThumbnail(imgSrc, thumb => {
+          card.innerHTML = `
+            <img class="photo-card-thumb" src="${thumb}">
+            <div class="photo-fullname">${fileName}</div>
+          `
+        })
+        // 点击卡片进入单图详情
+        card.addEventListener('click', () => {
+          location.hash = `album=${folderName}&photo=${fileName}`
+        })
+        photoGrid.appendChild(card)
+      }
+    }
+
+    // 缓存相册数据
+    let globalAlbumMap = new Map()
+    function getAlbumInfo(folder) {
+      return globalAlbumMap.get(folder)
+    }
+
+    // 日期切换重新渲染相册列表
+    homeToggleDate.addEventListener('change', e => {
+      showDate = e.target.checked
+      scanAlbums()
+    })
+
+    // 哈希路由监听
+    window.addEventListener('hashchange', () => switchPage(parseHash()))
+
+    // 页面初始化
+    window.onload = async () => {
+      showDate = homeToggleDate.checked
+      // 预加载相册缓存
       const imageModules = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' })
       const albumMap = new Map()
       const regAlbum = /^(\d{4}-\d{2}-\d{2})-(.+)$/
@@ -257,39 +439,9 @@
         if (!albumMap.has(folderName)) albumMap.set(folderName, { date, name, files: [] })
         albumMap.get(folderName).files.push(fileName)
       }
-      renderAlbumList(albumMap)
-    }
-
-    function renderAlbumList(map) {
-      albumList.innerHTML = ''
-      for (const [folderName, info] of map) {
-        const firstImg = `${ALBUM_BASE}${folderName}/${info.files[0]}`
-        const item = document.createElement('div')
-        item.className = 'album-item'
-        const showName = showDate ? folderName : pureName(folderName)
-        createThumbnail(firstImg, thumb => {
-          item.innerHTML = `<img class="album-thumb" src="${thumb}"><div class="album-name">${showName}</div>`
-        })
-        item.addEventListener('click', () => {
-          location.hash = `album=${folderName}&photo=${info.files[0]}`
-        })
-        albumList.appendChild(item)
-      }
-    }
-
-    // 日期切换
-    homeToggleDate.addEventListener('change', e => {
-      showDate = e.target.checked
-      scanAlbums()
-    })
-
-    window.addEventListener('hashchange', () => switchPage(parseHash()))
-    window.onload = () => {
-      showDate = homeToggleDate.checked
-      scanAlbums()
+      globalAlbumMap = albumMap
       switchPage(parseHash())
     }
   </script>
 </body>
 </html>
-
