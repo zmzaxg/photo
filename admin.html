@@ -28,6 +28,11 @@
       font-size: 13px;
     }
     .top-bar button:hover { background: #e9e9e9; }
+    .top-bar button:disabled {
+      background: #eee;
+      color: #aaa;
+      cursor: not-allowed;
+    }
     .view-group { display: flex; gap: 4px; }
     .switch-item {
       display: flex;
@@ -80,6 +85,11 @@
     }
     #btnRefresh:hover {
       background:#e9e9e9;
+    }
+    #btnRefresh:disabled {
+      background: #eee;
+      color: #aaa;
+      cursor: not-allowed;
     }
     .breadcrumb {
       flex:1;
@@ -185,6 +195,11 @@
       background:#f8f8f8;
       cursor:pointer;
       border-radius:2px;
+    }
+    .modal-btn:disabled {
+      background: #eee;
+      color: #aaa;
+      cursor: not-allowed;
     }
     .modal-btn.primary { background:#0078d4; color:#fff; border-color:#0078d4; }
 
@@ -302,7 +317,7 @@
 
 <div class="modal loading-modal" id="loadingModal">
   <div class="modal-box">
-    <div class="loading-text">正在加载最新目录与文件数据，请稍候...</div>
+    <div class="loading-text">正在处理，请稍候...</div>
   </div>
 </div>
 
@@ -375,10 +390,28 @@ let selectedItems = []
 const API_BASE = 'https://api.github.com'
 const loadingModal = document.getElementById('loadingModal')
 
-// 刷新冷却锁
-let isRefreshing = false;
-const MIN_REFRESH_COOLDOWN = 3000;
-let lastRefreshTime = 0;
+// 全局唯一加载锁：所有API操作共用，防止并发重复操作
+let isGlobalLoading = false;
+
+// 统一开启加载遮罩 + 禁用全部操作按钮
+function startLoading() {
+  if(isGlobalLoading) return;
+  isGlobalLoading = true;
+  loadingModal.style.display = 'flex';
+  // 顶部按钮禁用
+  document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
+    btn.disabled = true;
+  })
+}
+
+// 统一关闭加载遮罩 + 恢复按钮可用
+function endLoading() {
+  isGlobalLoading = false;
+  loadingModal.style.display = 'none';
+  document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
+    btn.disabled = false;
+  })
+}
 
 function checkConfig() {
   globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
@@ -550,31 +583,28 @@ function clearAllSelect() {
   selectedItems = []
 }
 
-// 刷新主逻辑
+// 统一刷新渲染流程：内置加载锁，所有操作完成后统一调用
+async function reloadAllView() {
+  renderBreadcrumb(currentPath)
+  await loadTree()
+  await renderFileList(currentPath)
+}
+
+// 刷新按钮主逻辑
 async function refreshCurrentDir() {
-  const now = Date.now();
-  if(isRefreshing || (now - lastRefreshTime) < MIN_REFRESH_COOLDOWN){
-    return;
-  }
-  lastRefreshTime = now;
-  isRefreshing = true;
-
-  clearAllSelect()
-  copyCache = { path: '', name: '', type: '', action: '', list: [] }
-  hideContextMenu()
-  document.getElementById('treeView').innerHTML = ''
-  document.getElementById('fileArea').innerHTML = ''
-  loadingModal.style.display = 'flex'
-
+  if(isGlobalLoading) return;
+  startLoading();
   try {
-    renderBreadcrumb(currentPath)
-    await loadTree()
-    await renderFileList(currentPath)
+    clearAllSelect()
+    copyCache = { path: '', name: '', type: '', action: '', list: [] }
+    hideContextMenu()
+    document.getElementById('treeView').innerHTML = ''
+    document.getElementById('fileArea').innerHTML = ''
+    await reloadAllView();
   } catch (err) {
     console.error('刷新加载失败：', err)
   } finally {
-    loadingModal.style.display = 'none'
-    isRefreshing = false;
+    endLoading();
   }
 }
 
@@ -593,7 +623,17 @@ async function scanDirTree(path, parent, level) {
       item.dataset.path = d.path
       item.innerHTML = `<span>📁</span> ${showDatePrefix ? d.name : pureName(d.name)}`
       if (d.path === currentPath) item.classList.add('active')
-      item.addEventListener('click', () => navigateTo(d.path))
+      item.addEventListener('click', async () => {
+        if(isGlobalLoading) return;
+        startLoading();
+        try {
+          currentPath = d.path
+          await reloadAllView();
+          hideContextMenu()
+        } finally {
+          endLoading();
+        }
+      })
       parent.appendChild(item)
       await scanDirTree(d.path, parent, level + 1)
     }
@@ -613,17 +653,27 @@ function renderBreadcrumb(path) {
   }
   bc.innerHTML = html
   bc.querySelectorAll('a').forEach(a => {
-    a.addEventListener('click', () => navigateTo(a.dataset.path))
+    a.addEventListener('click', async () => {
+      if(isGlobalLoading) return;
+      startLoading();
+      try {
+        currentPath = a.dataset.path
+        await reloadAllView();
+        hideContextMenu()
+      } finally {
+        endLoading();
+      }
+    })
   })
 }
 
 const contextMenu = document.getElementById('contextMenu')
 function showContextMenu(x, y, hasFile) {
   document.querySelectorAll('.item-only').forEach(el => {
-    el.classList.toggle('menu-disabled', !hasFile)
+    el.classList.toggle('menu-disabled', !hasFile || isGlobalLoading)
   })
   const pasteItem = contextMenu.querySelector('[data-action="paste"]')
-  pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length))
+  pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length) || isGlobalLoading)
   contextMenu.style.left = x + 'px'
   contextMenu.style.top = y + 'px'
   contextMenu.style.display = 'block'
@@ -643,6 +693,7 @@ async function renderFileList(path) {
 
     const bindItemEvent = (el, item) => {
       el.addEventListener('click', e => {
+        if(isGlobalLoading) return;
         e.stopPropagation()
         if (!multiSelectMode) clearAllSelect()
         el.classList.toggle('selected')
@@ -652,11 +703,20 @@ async function renderFileList(path) {
           selectedItems = selectedItems.filter(s => s.path !== item.path)
         }
       })
-      el.addEventListener('dblclick', () => {
-        if (item.type === 'dir') navigateTo(item.path)
-        else openPreview(item)
+      el.addEventListener('dblclick', async () => {
+        if(isGlobalLoading) return;
+        if (item.type === 'dir') {
+          startLoading();
+          try {
+            currentPath = item.path
+            await reloadAllView();
+          } finally {
+            endLoading();
+          }
+        } else openPreview(item)
       })
       el.addEventListener('contextmenu', e => {
+        if(isGlobalLoading) return;
         e.preventDefault()
         e.stopPropagation()
         const isSel = el.classList.contains('selected')
@@ -726,7 +786,7 @@ function initDragSelect() {
   const selectBox = document.createElement('div')
   selectBox.className = 'select-box'
   area.addEventListener('mousedown', e => {
-    if (e.target !== area) return
+    if(isGlobalLoading || e.target !== area) return
     clearAllSelect()
     dragStart = true
     startX = e.clientX
@@ -739,7 +799,7 @@ function initDragSelect() {
     area.appendChild(selectBox)
   })
   area.addEventListener('mousemove', e => {
-    if (!dragStart) return
+    if (!dragStart || isGlobalLoading) return
     const rect = area.getBoundingClientRect()
     const curX = e.clientX - rect.left
     const curY = e.clientY - rect.top
@@ -749,7 +809,7 @@ function initDragSelect() {
     selectBox.style.top = Math.min(startY - rect.top, curY) + 'px'
   })
   area.addEventListener('mouseup', () => {
-    if (!dragStart) return
+    if (!dragStart || isGlobalLoading) return
     dragStart = false
     const boxRect = selectBox.getBoundingClientRect()
     document.querySelectorAll('.file-card, .view-list tr').forEach(el => {
@@ -771,15 +831,8 @@ function initDragSelect() {
   })
 }
 
-async function navigateTo(path) {
-  currentPath = path
-  renderBreadcrumb(path)
-  await loadTree()
-  await renderFileList(currentPath)
-  hideContextMenu()
-}
-
 document.getElementById('fileArea').addEventListener('contextmenu', e => {
+  if(isGlobalLoading) return;
   e.preventDefault()
   clearAllSelect()
   showContextMenu(e.clientX, e.clientY, false)
@@ -787,6 +840,7 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
 document.addEventListener('click', hideContextMenu)
 
 document.getElementById('toggleMulti').addEventListener('change', e => {
+  if(isGlobalLoading) return;
   multiSelectMode = e.target.checked
   clearAllSelect()
 })
@@ -795,6 +849,7 @@ document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDi
 
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
   item.addEventListener('click', async () => {
+    if(isGlobalLoading) return;
     hideContextMenu()
     const act = item.dataset.action
     switch(act) {
@@ -841,7 +896,7 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
 
 // 批量删除选中（区分文件/文件夹）
 async function batchDeleteSelected() {
-  if(!selectedItems.length) return
+  if(isGlobalLoading || !selectedItems.length) return
   const dirItems = selectedItems.filter(i => i.type === 'dir')
   const fileItems = selectedItems.filter(i => i.type === 'file')
   let msg = ''
@@ -850,42 +905,56 @@ async function batchDeleteSelected() {
   else msg = `确定删除${fileItems.length}个文件？`
   if(!confirm(msg)) return
 
-  // 先删文件
-  for(const f of fileItems){
-    try{
-      await githubApiWrite(f.path, 'DELETE', {sha:f.sha, message:'批量删除文件'})
-    }catch(e){console.error('删除文件失败',f.path,e)}
+  startLoading();
+  try {
+    // 先删文件
+    for(const f of fileItems){
+      try{
+        await githubApiWrite(f.path, 'DELETE', {sha:f.sha, message:'批量删除文件'})
+      }catch(e){console.error('删除文件失败',f.path,e)}
+    }
+    // 再删文件夹
+    for(const d of dirItems){
+      await deleteFolder(d.path)
+    }
+    await reloadAllView();
+  } catch (err) {
+    console.error('批量删除异常', err)
+  } finally {
+    endLoading();
   }
-  // 再删文件夹
-  for(const d of dirItems){
-    await deleteFolder(d.path)
-  }
-  await refreshCurrentDir()
 }
 
 // 粘贴复制/剪切缓存（支持文件夹+文件混合）
 async function doPaste() {
-  if (!copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
+  if(isGlobalLoading || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
   const isCut = copyCache.action === 'cut'
   const targetParent = currentPath
-  for (const item of copyCache.list) {
-    if(item.type === 'file'){
-      const raw = await githubApiRead(item.path)
-      const newPath = `${targetParent}/${item.name}`
-      await githubApiWrite(newPath, 'PUT', { message: `粘贴文件 ${item.name}`, content: raw.content })
-      if(isCut) await githubApiWrite(item.path, 'DELETE', {sha:item.sha, message:'剪切删除源文件'})
-    }else{
-      const sourceFolder = item.path
-      const targetFull = `${targetParent}/${sourceFolder.split('/').pop()}`
-      if(isCut){
-        await moveFolder(sourceFolder, targetFull)
+  startLoading();
+  try {
+    for (const item of copyCache.list) {
+      if(item.type === 'file'){
+        const raw = await githubApiRead(item.path)
+        const newPath = `${targetParent}/${item.name}`
+        await githubApiWrite(newPath, 'PUT', { message: `粘贴文件 ${item.name}`, content: raw.content })
+        if(isCut) await githubApiWrite(item.path, 'DELETE', {sha:item.sha, message:'剪切删除源文件'})
       }else{
-        await copyFolder(sourceFolder, targetParent)
+        const sourceFolder = item.path
+        const targetFull = `${targetParent}/${sourceFolder.split('/').pop()}`
+        if(isCut){
+          await moveFolder(sourceFolder, targetFull)
+        }else{
+          await copyFolder(sourceFolder, targetParent)
+        }
       }
     }
+    copyCache = { list: [], action: '' }
+    await reloadAllView();
+  } catch (err) {
+    console.error('粘贴异常', err)
+  } finally {
+    endLoading();
   }
-  copyCache = { list: [], action: '' }
-  await refreshCurrentDir()
 }
 
 const uploadPanel = document.getElementById('uploadPanel')
@@ -895,6 +964,7 @@ document.getElementById('uploadPanelClose').addEventListener('click', ()=>{
 })
 
 document.getElementById('btnNewFolder').addEventListener('click', () => {
+  if(isGlobalLoading) return;
   document.getElementById('newFolderModal').style.display = 'flex'
   document.getElementById('newFolderName').value = ''
   document.getElementById('newFolderName').focus()
@@ -903,84 +973,99 @@ document.getElementById('cancelNew').addEventListener('click', ()=>{
   document.getElementById('newFolderModal').style.display = 'none'
 })
 document.getElementById('confirmNew').addEventListener('click', async () => {
+  if(isGlobalLoading) return;
   let name = document.getElementById('newFolderName').value.trim()
   if (!name) return alert('请输入文件夹名称')
   const fullDirName = fullName(name)
   const targetPath = `${currentPath}/${fullDirName}/.gitkeep`
+  document.getElementById('newFolderModal').style.display = 'none'
+  startLoading();
   try {
     await githubApiWrite(targetPath, 'PUT', { message: `新建文件夹 ${fullDirName}`, content: '' })
     alert('创建成功')
-    document.getElementById('newFolderModal').style.display = 'none'
-    await refreshCurrentDir()
+    await reloadAllView();
   } catch(e) {
     alert('创建失败')
+    console.error(e)
+  } finally {
+    endLoading();
   }
 })
 
 document.getElementById('btnUpload').addEventListener('click', () => {
+  if(isGlobalLoading) return;
   document.getElementById('fileUpload').click()
 })
 
 document.getElementById('fileUpload').addEventListener('change', async e => {
+  if(isGlobalLoading) return;
   const files = e.target.files
   if (!files.length) return
   uploadPanel.classList.remove('hidden')
-  for (const file of files) {
-    const item = document.createElement('div')
-    item.className = 'upload-item'
-    item.innerHTML = `
-      <div class="upload-filename">${file.name}</div>
-      <div class="progress-bar"><div class="progress-inner"></div></div>
-      <div class="upload-status">准备上传...</div>
-    `
-    uploadList.appendChild(item)
-    const progressInner = item.querySelector('.progress-inner')
-    const statusText = item.querySelector('.upload-status')
-    try {
-      statusText.textContent = '读取文件中...'
-      const reader = new FileReader()
-      reader.onprogress = (ev) => {
-        if (ev.lengthComputable) {
-          const pct = Math.round((ev.loaded / ev.total) * 40)
-          progressInner.style.width = pct + '%'
-          statusText.textContent = `读取文件 ${ev.loaded}/${ev.total} 字节`
+  startLoading();
+  try {
+    for (const file of files) {
+      const item = document.createElement('div')
+      item.className = 'upload-item'
+      item.innerHTML = `
+        <div class="upload-filename">${file.name}</div>
+        <div class="progress-bar"><div class="progress-inner"></div></div>
+        <div class="upload-status">准备上传...</div>
+      `
+      uploadList.appendChild(item)
+      const progressInner = item.querySelector('.progress-inner')
+      const statusText = item.querySelector('.upload-status')
+      try {
+        statusText.textContent = '读取文件中...'
+        const reader = new FileReader()
+        reader.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            const pct = Math.round((ev.loaded / ev.total) * 40)
+            progressInner.style.width = pct + '%'
+            statusText.textContent = `读取文件 ${ev.loaded}/${ev.total} 字节`
+          }
         }
-      }
-      reader.onload = async () => {
-        progressInner.style.width = '45%'
-        statusText.textContent = '转换Base64并提交请求...'
-        const b64 = reader.result.split(',')[1]
-        const targetPath = `${currentPath}/${file.name}`
-        let reqProgress = 45
-        const timer = setInterval(() => {
-          reqProgress += Math.floor(Math.random() * 3)
-          if (reqProgress >= 90) reqProgress = 90
-          progressInner.style.width = reqProgress + '%'
-          statusText.textContent = `请求上传中 ${reqProgress}%`
-        }, 80)
-        await githubApiWrite(targetPath, 'PUT', { message: `上传 ${file.name}`, content: b64 })
-        clearInterval(timer)
-        progressInner.style.width = '100%'
-        statusText.textContent = '上传完成'
-        statusText.className = 'upload-status status-success'
-      }
-      reader.onerror = () => {
+        reader.onload = async () => {
+          progressInner.style.width = '45%'
+          statusText.textContent = '转换Base64并提交请求...'
+          const b64 = reader.result.split(',')[1]
+          const targetPath = `${currentPath}/${file.name}`
+          let reqProgress = 45
+          const timer = setInterval(() => {
+            reqProgress += Math.floor(Math.random() * 3)
+            if (reqProgress >= 90) reqProgress = 90
+            progressInner.style.width = reqProgress + '%'
+            statusText.textContent = `请求上传中 ${reqProgress}%`
+          }, 80)
+          await githubApiWrite(targetPath, 'PUT', { message: `上传 ${file.name}`, content: b64 })
+          clearInterval(timer)
+          progressInner.style.width = '100%'
+          statusText.textContent = '上传完成'
+          statusText.className = 'upload-status status-success'
+        }
+        reader.onerror = () => {
+          progressInner.style.width = '0%'
+          statusText.textContent = '文件读取失败'
+          statusText.className = 'upload-status status-error'
+        }
+        reader.readAsDataURL(file)
+      } catch (err) {
         progressInner.style.width = '0%'
-        statusText.textContent = '文件读取失败'
+        statusText.textContent = '上传失败：' + err.message
         statusText.className = 'upload-status status-error'
       }
-      reader.readAsDataURL(file)
-    } catch (err) {
-      progressInner.style.width = '0%'
-      statusText.textContent = '上传失败：' + err.message
-      statusText.className = 'upload-status status-error'
     }
+    await reloadAllView();
+  } catch (err) {
+    console.error('上传整体异常', err)
+  } finally {
+    endLoading();
   }
-  setTimeout(() => refreshCurrentDir(), 1500)
   e.target.value = ''
 })
 
 function openPreview(item) {
+  if(isGlobalLoading) return;
   const url = location.origin + '/' + item.path
   document.getElementById('previewImg').src = url
   document.getElementById('previewModal').style.display = 'flex'
@@ -990,6 +1075,7 @@ document.getElementById('closePreview').addEventListener('click', () => {
 })
 
 function openProp() {
+  if(isGlobalLoading) return;
   const item = selectedItems[0]
   const name = showDatePrefix ? item.name : pureName(item.name)
   const type = item.type === 'dir' ? '文件夹' : '文件'
@@ -1009,6 +1095,7 @@ document.getElementById('closeProp').addEventListener('click', () => {
 })
 
 function openRename() {
+  if(isGlobalLoading) return;
   const disp = showDatePrefix ? selectedItems[0].name : pureName(selectedItems[0].name)
   document.getElementById('renameInput').value = disp
   document.getElementById('renameModal').style.display = 'flex'
@@ -1018,6 +1105,7 @@ document.getElementById('cancelRename').addEventListener('click', () => {
   document.getElementById('renameModal').style.display = 'none'
 })
 document.getElementById('confirmRename').addEventListener('click', async () => {
+  if(isGlobalLoading) return;
   const newDisp = document.getElementById('renameInput').value.trim()
   if (!newDisp) return
   const newFullName = fullName(newDisp)
@@ -1026,26 +1114,47 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
   const newFullPath = `${parentPath}/${newFullName}`
   document.getElementById('renameModal').style.display = 'none'
 
-  if(oldItem.type === 'file'){
-    const raw = await githubApiRead(oldItem.path)
-    await githubApiWrite(newFullPath, 'PUT', { message: `重命名 ${oldItem.name} -> ${newFullName}`, content: raw.content })
-    await githubApiWrite(oldItem.path, 'DELETE', { sha: raw.sha, message: '删除原文件' })
-  }else{
-    await moveFolder(oldItem.path, newFullPath)
+  startLoading();
+  try {
+    if(oldItem.type === 'file'){
+      const raw = await githubApiRead(oldItem.path)
+      await githubApiWrite(newFullPath, 'PUT', { message: `重命名 ${oldItem.name} -> ${newFullName}`, content: raw.content })
+      await githubApiWrite(oldItem.path, 'DELETE', { sha: raw.sha, message: '删除原文件' })
+    }else{
+      await moveFolder(oldItem.path, newFullPath)
+    }
+    await reloadAllView();
+  } catch (err) {
+    alert('重命名操作失败')
+    console.error(err)
+  } finally {
+    endLoading();
   }
-  await refreshCurrentDir()
 })
 
 document.getElementById('viewIcon').addEventListener('click', async () => {
+  if(isGlobalLoading) return;
   viewMode = 'icon'
-  await renderFileList(currentPath)
+  startLoading();
+  try {
+    await renderFileList(currentPath)
+  } finally {
+    endLoading();
+  }
 })
 document.getElementById('viewList').addEventListener('click', async () => {
+  if(isGlobalLoading) return;
   viewMode = 'list'
-  await renderFileList(currentPath)
+  startLoading();
+  try {
+    await renderFileList(currentPath)
+  } finally {
+    endLoading();
+  }
 })
 
 document.getElementById('toggleDate').addEventListener('change', async e => {
+  if(isGlobalLoading) return;
   showDatePrefix = e.target.checked
   await refreshCurrentDir()
 })
