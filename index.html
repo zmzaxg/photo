@@ -7,11 +7,11 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
-    .admin-link { text-align: right; margin-bottom: 16px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
     .admin-link a { color: #2563eb; text-decoration: none; font-size: 14px; }
-    h1 { text-align: center; margin-bottom: 30px; color: #333; }
+    .date-switch { font-size:14px; }
+    h1 { color: #333; }
 
-    /* 相册列表 */
     .album-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -41,12 +41,7 @@
       font-size: 14px;
     }
 
-    /* 图片详情页 */
-    .detail-container {
-      display: none;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
+    .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
     .back-btn {
       padding: 8px 16px;
       background: #2563eb;
@@ -65,14 +60,9 @@
       border-radius: 8px;
       background: #000;
     }
-    .preview-img {
-      max-width: 90vw;
-      cursor: grab;
-      transform-origin: center center;
-    }
+    .preview-img { max-width: 90vw; cursor: grab; }
     .preview-img:active { cursor: grabbing; }
 
-    /* EXIF 信息 & 链接区域 */
     .info-panel {
       background: #fff;
       padding: 20px;
@@ -80,17 +70,8 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     .info-item { margin: 8px 0; font-size: 14px; color: #333; }
-    .link-box {
-      display: flex;
-      gap: 8px;
-      margin-top: 16px;
-    }
-    .link-input {
-      flex: 1;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
+    .link-box { display: flex; gap: 8px; margin-top: 16px; }
+    .link-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
     .copy-btn {
       padding: 8px 16px;
       background: #10b981;
@@ -102,17 +83,22 @@
   </style>
 </head>
 <body>
-  <div class="admin-link">
-    <a href="/admin.html">🔐 管理后台</a>
+  <div class="header">
+    <h1>我的相册</h1>
+    <div style="display:flex; gap:20px; align-items:center;">
+      <label class="date-switch">
+        <input type="checkbox" id="homeToggleDate"> 显示文件夹日期前缀
+      </label>
+      <div class="admin-link">
+        <a href="/admin.html">🔐 管理后台</a>
+      </div>
+    </div>
   </div>
 
-  <!-- 相册列表页 -->
   <div id="albumPage">
-    <h1>我的相册</h1>
     <div class="album-list" id="albumList"></div>
   </div>
 
-  <!-- 图片详情页 -->
   <div id="detailPage" class="detail-container">
     <button class="back-btn" id="backBtn">← 返回相册列表</button>
     <div class="img-wrapper">
@@ -132,10 +118,10 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
-
   <script type="module">
     const ALBUM_BASE = '/albums/'
     const THUMB_SIZE = { w: 200, h: 150 }
+    let showDate = false
     const albumPage = document.getElementById('albumPage')
     const detailPage = document.getElementById('detailPage')
     const albumList = document.getElementById('albumList')
@@ -143,18 +129,20 @@
     const previewImg = document.getElementById('previewImg')
     const imgLink = document.getElementById('imgLink')
     const copyLink = document.getElementById('copyLink')
+    const homeToggleDate = document.getElementById('homeToggleDate')
 
-    // 路由解析
+    // 名称处理
+    function pureName(fullName) {
+      const reg = /^\d{4}-\d{2}-\d{2}-/
+      return reg.test(fullName) ? fullName.replace(reg, '') : fullName
+    }
+
+    // 路由
     function parseHash() {
       const hash = location.hash.slice(1)
       const params = new URLSearchParams(hash)
-      return {
-        album: params.get('album'),
-        photo: params.get('photo')
-      }
+      return { album: params.get('album'), photo: params.get('photo') }
     }
-
-    // 页面切换
     function switchPage({ album, photo }) {
       if (album && photo) {
         albumPage.style.display = 'none'
@@ -165,23 +153,13 @@
         detailPage.style.display = 'none'
       }
     }
-
-    // 返回按钮
-    backBtn.addEventListener('click', () => {
-      location.hash = ''
-    })
-
-    // 复制链接
+    backBtn.addEventListener('click', () => location.hash = '')
     copyLink.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(imgLink.value)
-        alert('链接复制成功')
-      } catch (e) {
-        alert('复制失败，请手动复制')
-      }
+      try { await navigator.clipboard.writeText(imgLink.value); alert('复制成功') }
+      catch { alert('手动复制') }
     })
 
-    // Canvas 生成缩略图
+    // 缩略图
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -191,19 +169,17 @@
         canvas.width = THUMB_SIZE.w
         canvas.height = THUMB_SIZE.h
         const scale = Math.max(canvas.width / img.width, canvas.height / img.height)
-        const w = img.width * scale
-        const h = img.height * scale
-        const x = (canvas.width - w) / 2
-        const y = (canvas.height - h) / 2
+        const w = img.width * scale, h = img.height * scale
+        const x = (canvas.width - w) / 2, y = (canvas.height - h) / 2
         ctx.drawImage(img, x, y, w, h)
         callback(canvas.toDataURL('image/jpeg', 0.8))
       }
       img.src = imgSrc
     }
 
-    // 解析 EXIF
+    // EXIF
     function parseExif(imgUrl) {
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         const img = new Image()
         img.crossOrigin = 'anonymous'
         img.onload = () => {
@@ -213,13 +189,9 @@
           const gps = exif.GPS || {}
           const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
           const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
-          const exp = []
-          if (exifInfo[piexif.ExifIFD.FNumber]) {
-            exp.push(`光圈 f/${piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])}`)
-          }
-          if (exifInfo[piexif.ExifIFD.ExposureTime]) {
-            exp.push(`快门 1/${Math.round(1 / piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime]))}s`)
-          }
+          let exp = []
+          if (exifInfo[piexif.ExifIFD.FNumber]) exp.push(`光圈 f/${piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])}`)
+          if (exifInfo[piexif.ExifIFD.ExposureTime]) exp.push(`快门 1/${Math.round(1 / piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime]))}s`)
           const expStr = exp.join(' ') || '暂无'
           let gpsStr = '暂无'
           if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
@@ -234,35 +206,30 @@
     }
 
     // 图片缩放拖拽
-    let scale = 1
-    let isDrag = false
-    let moveX = 0, moveY = 0
+    let scale = 1, isDrag = false, moveX = 0, moveY = 0
     function initDragZoom() {
-      scale = 1
-      moveX = 0
-      moveY = 0
+      scale = 1; moveX = 0; moveY = 0
       previewImg.style.transform = `scale(${scale}) translate(0,0)`
-      previewImg.addEventListener('wheel', (e) => {
+      previewImg.addEventListener('wheel', e => {
         e.preventDefault()
         scale += e.deltaY > 0 ? -0.1 : 0.1
         scale = Math.max(0.5, Math.min(scale, 3))
         previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
       })
-      previewImg.addEventListener('mousedown', (e) => {
+      previewImg.addEventListener('mousedown', e => {
         isDrag = true
-        const startX = e.clientX - moveX
-        const startY = e.clientY - moveY
-        document.addEventListener('mousemove', (e) => {
+        const sX = e.clientX - moveX
+        const sY = e.clientY - moveY
+        document.addEventListener('mousemove', e => {
           if (!isDrag) return
-          moveX = e.clientX - startX
-          moveY = e.clientY - startY
+          moveX = e.clientX - sX
+          moveY = e.clientY - sY
           previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
         })
         document.addEventListener('mouseup', () => isDrag = false)
       })
     }
 
-    // 加载图片详情
     async function loadPhotoDetail(albumName, photoName) {
       const fullUrl = `${ALBUM_BASE}${albumName}/${photoName}`
       imgLink.value = location.origin + fullUrl
@@ -275,9 +242,8 @@
       document.getElementById('exifGps').innerText = exifData.gpsStr
     }
 
-    // 扫描相册目录（纯静态，无 API）
+    // 扫描相册（纯静态）
     async function scanAlbums() {
-      // Vite 动态导入 public/albums 下所有图片
       const imageModules = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' })
       const albumMap = new Map()
       const regAlbum = /^(\d{4}-\d{2}-\d{2})-(.+)$/
@@ -288,23 +254,21 @@
         const match = folderName.match(regAlbum)
         if (!match) continue
         const [_, date, name] = match
-        const albumKey = folderName
-        if (!albumMap.has(albumKey)) {
-          albumMap.set(albumKey, { date, name, files: [] })
-        }
-        albumMap.get(albumKey).files.push(fileName)
+        if (!albumMap.has(folderName)) albumMap.set(folderName, { date, name, files: [] })
+        albumMap.get(folderName).files.push(fileName)
       }
-      // 渲染相册列表
+      renderAlbumList(albumMap)
+    }
+
+    function renderAlbumList(map) {
       albumList.innerHTML = ''
-      for (const [folderName, info] of albumMap) {
+      for (const [folderName, info] of map) {
         const firstImg = `${ALBUM_BASE}${folderName}/${info.files[0]}`
         const item = document.createElement('div')
         item.className = 'album-item'
-        createThumbnail(firstImg, (thumbUrl) => {
-          item.innerHTML = `
-            <img class="album-thumb" src="${thumbUrl}" alt="${info.name}">
-            <div class="album-name">${info.date} ${info.name}</div>
-          `
+        const showName = showDate ? folderName : pureName(folderName)
+        createThumbnail(firstImg, thumb => {
+          item.innerHTML = `<img class="album-thumb" src="${thumb}"><div class="album-name">${showName}</div>`
         })
         item.addEventListener('click', () => {
           location.hash = `album=${folderName}&photo=${info.files[0]}`
@@ -313,14 +277,18 @@
       }
     }
 
-    // 监听 hash 变化
-    window.addEventListener('hashchange', () => {
-      switchPage(parseHash())
+    // 日期切换
+    homeToggleDate.addEventListener('change', e => {
+      showDate = e.target.checked
+      scanAlbums()
     })
 
-    // 初始化
-    scanAlbums()
-    switchPage(parseHash())
+    window.addEventListener('hashchange', () => switchPage(parseHash()))
+    window.onload = () => {
+      showDate = homeToggleDate.checked
+      scanAlbums()
+      switchPage(parseHash())
+    }
   </script>
 </body>
 </html>

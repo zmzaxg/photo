@@ -3,330 +3,697 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>相册管理后台 - Win10 风格</title>
+  <title>相册管理后台 - Windows 风格文件管理器</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
-    body { background: #f3f3f3; padding: 0; }
-    .container { display: flex; height: 100vh; }
+    body { background: #f3f3f3; height: 100vh; overflow: hidden; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
 
-    /* 侧边栏目录树 */
+    /* 顶部工具栏 */
+    .top-bar {
+      height: 40px;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+    }
+    .top-bar button {
+      padding: 4px 10px;
+      border: 1px solid #ccc;
+      background: #f8f8f8;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .top-bar button:hover { background: #e9e9e9; }
+    .view-group { display: flex; gap: 4px; }
+    .switch-date { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size:13px; }
+
+    /* 主体布局 */
+    .container { display: flex; height: calc(100vh - 40px); }
+
+    /* 左侧目录树 */
     .sidebar {
       width: 220px;
       background: #fff;
-      border-right: 1px solid #e0e0e0;
-      padding: 16px;
+      border-right: 1px solid #ddd;
+      padding: 10px;
       overflow-y: auto;
     }
-    .sidebar h3 { font-size: 16px; margin-bottom: 12px; color: #333; }
+    .tree-title { font-size:14px; font-weight:600; margin-bottom:8px; color:#333; }
     .tree-item {
-      padding: 6px 8px;
-      border-radius: 4px;
+      padding: 4px 6px;
+      border-radius: 2px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 14px;
-      color: #333;
+      gap: 6px;
+      font-size: 13px;
+      white-space: nowrap;
     }
-    .tree-item:hover { background: #e5e5e5; }
+    .tree-item:hover { background: #e5f3ff; }
     .tree-item.active { background: #0078d4; color: #fff; }
-    .tree-icon { font-size: 16px; }
+    .tree-indent { margin-left: 14px; }
 
-    /* 主内容区 */
-    .main-content { flex: 1; display: flex; flex-direction: column; }
-    .toolbar {
-      background: #fff;
-      padding: 12px 16px;
-      border-bottom: 1px solid #e0e0e0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    /* 右侧主区域 */
+    .main { flex: 1; display: flex; flex-direction: column; }
     .breadcrumb {
-      flex: 1;
-      font-size: 14px;
-      color: #0078d4;
-    }
-    .breadcrumb a { color: #0078d4; text-decoration: none; cursor: pointer; }
-    .breadcrumb a:hover { text-decoration: underline; }
-    .toolbar button {
-      padding: 6px 12px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .btn-primary { background: #0078d4; color: #fff; }
-    .btn-success { background: #107c10; color: #fff; }
-    .btn-danger { background: #d83b01; color: #fff; }
-
-    /* 文件列表 */
-    .file-list {
-      flex: 1;
-      padding: 16px;
-      overflow-y: auto;
-    }
-    .file-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 16px;
-    }
-    .file-item {
+      height: 32px;
+      line-height: 32px;
+      padding: 0 16px;
       background: #fff;
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
-      padding: 12px;
-      cursor: pointer;
+      border-bottom: 1px solid #ddd;
+      font-size:13px;
+    }
+    .breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
+    .breadcrumb a:hover { text-decoration:underline; }
+
+    /* 文件区域 - 两种视图 */
+    .file-area { flex:1; padding:10px; overflow:auto; background:#fff; }
+    /* 图标预览视图 */
+    .view-icon {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+    }
+    .file-card {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
-      transition: border-color 0.2s;
+      padding: 8px;
+      border-radius: 2px;
+      cursor: pointer;
     }
-    .file-item:hover { border-color: #0078d4; }
-    .file-icon { font-size: 48px; color: #0078d4; }
-    .file-icon.folder { color: #ffb900; }
-    .file-name { font-size: 13px; text-align: center; word-break: break-all; }
-    .file-info { font-size: 11px; color: #666; }
+    .file-card:hover { background: #e5f3ff; }
+    .file-card.selected { background: #cce8ff; }
+    .file-icon { font-size: 40px; margin-bottom:4px; }
+    .file-name { font-size:12px; text-align:center; word-break:break-all; }
 
-    /* 配置弹窗 */
-    .config-modal {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-      display: flex; align-items: center; justify-content: center; z-index: 9999;
+    /* 详细列表视图 */
+    .view-list { width:100%; border-collapse: collapse; }
+    .view-list th, .view-list td {
+      border: 1px solid #eee;
+      padding: 6px 8px;
+      text-align: left;
+      font-size:13px;
     }
-    .modal-box { background: #fff; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; }
-    input { width: 100%; padding: 10px; margin: 8px 0 16px; border: 1px solid #ddd; border-radius: 4px; }
+    .view-list th { background:#f8f8f8; }
+    .view-list tr:hover { background:#e5f3ff; }
+    .view-list tr.selected { background:#cce8ff; }
+
+    /* 右键菜单 */
+    .context-menu {
+      position: fixed;
+      width: 160px;
+      background: #fff;
+      border: 1px solid #ccc;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
+      z-index: 9999;
+      display: none;
+    }
+    .menu-item {
+      padding: 6px 12px;
+      font-size:13px;
+      cursor: pointer;
+    }
+    .menu-item:hover { background: #e5f3ff; }
+    .menu-divider { height:1px; background:#ddd; margin:4px 0; }
+
+    /* 弹窗通用 */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    .modal-box {
+      background:#fff;
+      padding: 20px;
+      border-radius: 4px;
+      min-width: 320px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .modal-title { font-size:16px; margin-bottom:16px; font-weight:600; }
+    .modal-row { margin:10px 0; font-size:13px; }
+    .modal-input {
+      width:100%;
+      padding:6px;
+      border:1px solid #ccc;
+      border-radius:2px;
+      margin-top:4px;
+    }
+    .modal-btn-group { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; }
+    .modal-btn {
+      padding:5px 14px;
+      border:1px solid #ccc;
+      background:#f8f8f8;
+      cursor:pointer;
+      border-radius:2px;
+    }
+    .modal-btn.primary { background:#0078d4; color:#fff; border-color:#0078d4; }
+
+    /* 图片预览弹窗 */
+    .preview-modal .modal-box { max-width: 90vw; max-height: 90vh; padding:10px; }
+    .preview-img { max-width: 100%; max-height: 80vh; }
+
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <!-- 配置弹窗 -->
-  <div id="configModal" class="config-modal hidden">
-    <div class="modal-box">
-      <h3>系统初始化配置</h3>
-      <p>请填写 GitHub 仓库信息：</p>
-      <input type="text" id="repoUrl" placeholder="https://github.com/用户名/仓库名">
-      <input type="text" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
-      <button class="btn-primary" id="saveConfig">保存配置</button>
-    </div>
+<!-- 顶部工具栏 -->
+<div class="top-bar">
+  <button id="btnNewFolder">新建文件夹</button>
+  <button id="btnUpload">上传文件</button>
+  <div class="view-group">
+    <button id="viewIcon">图标视图</button>
+    <button id="viewList">详细列表</button>
+  </div>
+  <label class="switch-date">
+    <input type="checkbox" id="toggleDate"> 显示日期前缀
+  </label>
+</div>
+
+<!-- 主体 -->
+<div class="container">
+  <!-- 左侧目录树 -->
+  <div class="sidebar">
+    <div class="tree-title">相册目录</div>
+    <div id="treeView"></div>
   </div>
 
-  <div class="container">
-    <!-- 侧边栏目录树 -->
-    <div class="sidebar">
-      <h3>📁 目录导航</h3>
-      <div id="treeView"></div>
+  <!-- 右侧主区域 -->
+  <div class="main">
+    <div class="breadcrumb" id="breadcrumb">
+      <a data-path="public/albums">相册根目录</a>
     </div>
+    <div class="file-area" id="fileArea"></div>
+  </div>
+</div>
 
-    <!-- 主内容区 -->
-    <div class="main-content">
-      <!-- 工具栏 -->
-      <div class="toolbar">
-        <div class="breadcrumb" id="breadcrumb">
-          <a data-path="public/albums">相册根目录</a>
-        </div>
-        <button class="btn-primary" id="newFolderBtn">新建文件夹</button>
-        <button class="btn-success" id="uploadBtn">上传文件</button>
-      </div>
+<!-- 右键菜单 -->
+<div class="context-menu" id="contextMenu">
+  <div class="menu-item" data-action="preview">预览</div>
+  <div class="menu-item" data-action="copy">复制</div>
+  <div class="menu-item" data-action="cut">剪切</div>
+  <div class="menu-item" data-action="paste">粘贴</div>
+  <div class="menu-divider"></div>
+  <div class="menu-item" data-action="rename">重命名</div>
+  <div class="menu-item" data-action="delete">删除</div>
+  <div class="menu-divider"></div>
+  <div class="menu-item" data-action="prop">属性</div>
+</div>
 
-      <!-- 文件列表 -->
-      <div class="file-list">
-        <div class="file-grid" id="fileGrid"></div>
-      </div>
+<!-- 新建文件夹弹窗 -->
+<div class="modal" id="newFolderModal">
+  <div class="modal-box">
+    <div class="modal-title">新建文件夹</div>
+    <div class="modal-row">
+      <label>文件夹名称：</label>
+      <input class="modal-input" id="newFolderName" placeholder="输入名称，自动补全日期前缀">
+    </div>
+    <div class="modal-btn-group">
+      <button class="modal-btn" id="cancelNew">取消</button>
+      <button class="modal-btn primary" id="confirmNew">确定</button>
     </div>
   </div>
+</div>
 
-  <script>
-    const STORAGE_CONFIG = 'album_global_config'
-    let globalConfig = null
-    let currentPath = 'public/albums'
-    const API_BASE = 'https://api.github.com'
+<!-- 重命名弹窗 -->
+<div class="modal" id="renameModal">
+  <div class="modal-box">
+    <div class="modal-title">重命名</div>
+    <div class="modal-row">
+      <label>新名称：</label>
+      <input class="modal-input" id="renameInput">
+    </div>
+    <div class="modal-btn-group">
+      <button class="modal-btn" id="cancelRename">取消</button>
+      <button class="modal-btn primary" id="confirmRename">确定</button>
+    </div>
+  </div>
+</div>
 
-    // 1. 配置检测
-    const configModal = document.getElementById('configModal')
-    const saveConfig = document.getElementById('saveConfig')
-    saveConfig.addEventListener('click', () => {
-      const repo = document.getElementById('repoUrl').value.trim()
-      const token = document.getElementById('githubToken').value.trim()
-      if (!repo || !token) return alert('请填写完整信息')
-      localStorage.setItem(STORAGE_CONFIG, JSON.stringify({ repoUrl: repo, githubToken: token }))
-      location.reload()
-    })
+<!-- 属性弹窗 -->
+<div class="modal" id="propModal">
+  <div class="modal-box">
+    <div class="modal-title">文件属性</div>
+    <div class="modal-row" id="propContent"></div>
+    <div class="modal-btn-group">
+      <button class="modal-btn primary" id="closeProp">关闭</button>
+    </div>
+  </div>
+</div>
 
-    function checkConfig() {
-      globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
-      if (!globalConfig) {
-        configModal.classList.remove('hidden')
-        return false
-      }
-      configModal.classList.add('hidden')
-      return true
+<!-- 图片预览弹窗 -->
+<div class="modal preview-modal" id="previewModal">
+  <div class="modal-box">
+    <img class="preview-img" id="previewImg">
+    <div class="modal-btn-group">
+      <button class="modal-btn primary" id="closePreview">关闭预览</button>
+    </div>
+  </div>
+</div>
+
+<!-- 隐藏文件上传 -->
+<input type="file" id="fileUpload" multiple accept="image/*" class="hidden">
+
+<script>
+const STORAGE_CONFIG = 'album_global_config'
+let globalConfig = null
+let currentPath = 'public/albums'
+let viewMode = 'icon' // icon / list
+let showDatePrefix = false
+let copyCache = { path: '', name: '', type: '', action: '' }
+let selectedItem = null
+const API_BASE = 'https://api.github.com'
+
+// ========== 配置初始化 ==========
+function checkConfig() {
+  globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
+  if (!globalConfig) {
+    alert("请先完成系统配置！")
+    return false
+  }
+  return true
+}
+function parseRepo() {
+  const url = globalConfig.repoUrl
+  const arr = url.replace('https://github.com/', '').split('/')
+  return { owner: arr[0], repo: arr[1] }
+}
+
+// ========== GitHub API ==========
+async function githubApi(path, method = 'GET', body = null) {
+  const { owner, repo } = parseRepo()
+  const headers = {
+    'Authorization': `token ${globalConfig.githubToken}`,
+    'Accept': 'application/vnd.github.v3+json'
+  }
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+    method, headers, body: body ? JSON.stringify(body) : null
+  })
+  if (!res.ok) throw new Error('请求失败')
+  return res.json()
+}
+
+// ========== 工具函数 ==========
+// 自动生成日期前缀 YYYY-MM-DD-
+function getDatePrefix() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}-`
+}
+// 去除日期前缀（用于显示）
+function pureName(fullName) {
+  const reg = /^\d{4}-\d{2}-\d{2}-/
+  return reg.test(fullName) ? fullName.replace(reg, '') : fullName
+}
+// 获取完整名称（带日期前缀）
+function fullName(dispName) {
+  const reg = /^\d{4}-\d{2}-\d{2}-/
+  return reg.test(dispName) ? dispName : getDatePrefix() + dispName
+}
+// 文件图标
+function getFileIcon(type, name) {
+  if (type === 'dir') return '📁'
+  const ext = name.split('.').pop().toLowerCase()
+  return ['jpg','jpeg','png','webp','gif'].includes(ext) ? '🖼️' : '📄'
+}
+
+// ========== 目录树 ==========
+async function loadTree() {
+  const tree = document.getElementById('treeView')
+  tree.innerHTML = ''
+  await scanDirTree('public/albums', tree, 0)
+}
+async function scanDirTree(path, parent, level) {
+  try {
+    const list = await githubApi(path)
+    const dirs = list.filter(x => x.type === 'dir' && !x.name.startsWith('.'))
+    for (const d of dirs) {
+      const item = document.createElement('div')
+      item.className = `tree-item ${level > 0 ? 'tree-indent' : ''}`
+      item.dataset.path = d.path
+      item.innerHTML = `<span>📁</span> ${showDatePrefix ? d.name : pureName(d.name)}`
+      if (d.path === currentPath) item.classList.add('active')
+      item.addEventListener('click', () => navigateTo(d.path))
+      parent.appendChild(item)
+      await scanDirTree(d.path, parent, level + 1)
     }
+  } catch(e) { console.error(e) }
+}
 
-    function parseRepo() {
-      const url = globalConfig.repoUrl
-      const arr = url.replace('https://github.com/', '').split('/')
-      return { owner: arr[0], repo: arr[1] }
-    }
+// ========== 面包屑导航 ==========
+function renderBreadcrumb(path) {
+  const bc = document.getElementById('breadcrumb')
+  const parts = path.split('/')
+  let temp = ''
+  let html = `<a data-path="public/albums">相册根目录</a>`
+  for (let i = 2; i < parts.length; i++) {
+    temp += '/' + parts[i]
+    const p = 'public/albums' + temp
+    const n = showDatePrefix ? parts[i] : pureName(parts[i])
+    html += ` / <a data-path="${p}">${n}</a>`
+  }
+  bc.innerHTML = html
+  bc.querySelectorAll('a').forEach(a => {
+    a.addEventListener('click', () => navigateTo(a.dataset.path))
+  })
+}
 
-    // 2. GitHub API
-    async function githubApi(path, method = 'GET', body = null) {
-      const { owner, repo } = parseRepo()
-      const headers = {
-        'Authorization': `token ${globalConfig.githubToken}`,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-      const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
-        method, headers, body: body ? JSON.stringify(body) : null
-      })
-      if (!res.ok) throw new Error('请求失败')
-      return res.json()
-    }
+// ========== 文件列表渲染（双视图） ==========
+async function renderFileList(path) {
+  const area = document.getElementById('fileArea')
+  area.innerHTML = ''
+  try {
+    const list = await githubApi(path)
+    const dirs = list.filter(x => x.type === 'dir' && !x.name.startsWith('.'))
+    const files = list.filter(x => x.type === 'file' && !x.name.startsWith('.'))
+    const all = [...dirs, ...files]
 
-    // 3. 加载目录树
-    async function loadTreeView(path = 'public/albums', parentEl = document.getElementById('treeView'), level = 0) {
-      try {
-        const items = await githubApi(path)
-        const folders = items.filter(item => item.type === 'dir')
-        for (const folder of folders) {
-          const item = document.createElement('div')
-          item.className = 'tree-item'
-          item.style.paddingLeft = `${12 + level * 16}px`
-          item.dataset.path = folder.path
-          item.innerHTML = `<span class="tree-icon">📁</span> ${folder.name}`
-          item.addEventListener('click', () => navigateTo(folder.path))
-          parentEl.appendChild(item)
-          // 递归加载子目录
-          await loadTreeView(folder.path, parentEl, level + 1)
-        }
-      } catch (e) {
-        console.error('加载目录树失败', e)
-      }
-    }
-
-    // 4. 导航到指定目录
-    async function navigateTo(path) {
-      currentPath = path
-      // 更新面包屑
-      const parts = path.split('/')
-      let breadcrumbHtml = ''
-      let tempPath = ''
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i] === 'public' || parts[i] === 'albums') {
-          tempPath += parts[i] + '/'
-          continue
-        }
-        tempPath += parts[i] + '/'
-        const fullPath = tempPath.slice(0, -1)
-        breadcrumbHtml += `<a data-path="${fullPath}">${parts[i]}</a> / `
-      }
-      breadcrumbHtml = `<a data-path="public/albums">相册根目录</a> / ` + breadcrumbHtml.slice(0, -3)
-      document.getElementById('breadcrumb').innerHTML = breadcrumbHtml
-      // 绑定面包屑点击事件
-      document.querySelectorAll('.breadcrumb a').forEach(link => {
-        link.addEventListener('click', () => navigateTo(link.dataset.path))
-      })
-      // 加载文件列表
-      await loadFileList(path)
-    }
-
-    // 5. 加载文件列表
-    async function loadFileList(path) {
-      const grid = document.getElementById('fileGrid')
-      grid.innerHTML = ''
-      try {
-        const items = await githubApi(path)
-        // 先显示文件夹，再显示文件
-        const folders = items.filter(item => item.type === 'dir')
-        const files = items.filter(item => item.type === 'file')
-        // 渲染文件夹
-        folders.forEach(folder => {
-          const div = document.createElement('div')
-          div.className = 'file-item'
-          div.innerHTML = `
-            <span class="file-icon folder">📁</span>
-            <span class="file-name">${folder.name}</span>
-            <span class="file-info">文件夹</span>
-          `
-          div.addEventListener('click', () => navigateTo(folder.path))
-          grid.appendChild(div)
+    if (viewMode === 'icon') {
+      area.className = 'file-area view-icon'
+      all.forEach(item => {
+        const card = document.createElement('div')
+        card.className = 'file-card'
+        card.dataset.path = item.path
+        card.dataset.type = item.type
+        card.dataset.sha = item.sha
+        const dispName = showDatePrefix ? item.name : pureName(item.name)
+        card.innerHTML = `
+          <div class="file-icon">${getFileIcon(item.type, item.name)}</div>
+          <div class="file-name">${dispName}</div>
+        `
+        // 单击选中
+        card.addEventListener('click', e => {
+          e.stopPropagation()
+          clearSelect()
+          card.classList.add('selected')
+          selectedItem = item
         })
-        // 渲染文件
-        files.forEach(file => {
-          const div = document.createElement('div')
-          div.className = 'file-item'
-          const ext = file.name.split('.').pop().toLowerCase()
-          const isImage = ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
-          const icon = isImage ? '🖼️' : '📄'
-          div.innerHTML = `
-            <span class="file-icon">${icon}</span>
-            <span class="file-name">${file.name}</span>
-            <span class="file-info">${(file.size / 1024).toFixed(1)} KB</span>
-          `
-          grid.appendChild(div)
+        // 双击预览/进入目录
+        card.addEventListener('dblclick', () => {
+          if (item.type === 'dir') navigateTo(item.path)
+          else openPreview(item)
         })
-      } catch (e) {
-        grid.innerHTML = '<p>加载失败，请检查权限</p>'
-        console.error(e)
-      }
-    }
-
-    // 6. 新建文件夹
-    document.getElementById('newFolderBtn').addEventListener('click', async () => {
-      const name = prompt('请输入文件夹名称（格式：YYYY-MM-dd-xxx）')
-      if (!name || !/^\d{4}-\d{2}-\d{2}-.+$/.test(name)) {
-        return alert('格式错误，需 YYYY-MM-dd-xxx')
-      }
-      const path = `${currentPath}/${name}/.gitkeep`
-      await githubApi(path, 'PUT', { message: `新建文件夹 ${name}`, content: '' })
-      alert('创建成功')
-      navigateTo(currentPath)
-    })
-
-    // 7. 上传文件
-    document.getElementById('uploadBtn').addEventListener('click', () => {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.multiple = true
-      input.accept = 'image/*'
-      input.addEventListener('change', async (e) => {
-        const files = e.target.files
-        for (const file of files) {
-          const reader = new FileReader()
-          reader.readAsDataURL(file)
-          reader.onload = async () => {
-            const base64 = reader.result.split(',')[1]
-            const path = `${currentPath}/${file.name}`
-            await githubApi(path, 'PUT', { message: `上传 ${file.name}`, content: base64 })
-          }
-        }
-        alert('上传请求已发送')
-        setTimeout(() => navigateTo(currentPath), 1000)
+        // 右键菜单
+        card.addEventListener('contextmenu', e => {
+          e.preventDefault()
+          clearSelect()
+          card.classList.add('selected')
+          selectedItem = item
+          showContextMenu(e.clientX, e.clientY)
+        })
+        area.appendChild(card)
       })
-      input.click()
-    })
-
-    // 8. 删除文件/文件夹
-    document.getElementById('fileGrid').addEventListener('dblclick', async (e) => {
-      const item = e.target.closest('.file-item')
-      if (!item) return
-      const name = item.querySelector('.file-name').textContent
-      const isFolder = item.querySelector('.file-info').textContent === '文件夹'
-      if (!confirm(`确定删除 ${name}？`)) return
-      const path = `${currentPath}/${name}`
-      const list = await githubApi(currentPath)
-      const target = list.find(i => i.name === name)
-      await githubApi(path, 'DELETE', { sha: target.sha, message: `删除 ${name}` })
-      navigateTo(currentPath)
-    })
-
-    // 初始化
-    window.onload = async () => {
-      if (checkConfig()) {
-        await loadTreeView()
-        await navigateTo('public/albums')
-      }
+    } else {
+      area.className = 'file-area'
+      const table = document.createElement('table')
+      table.className = 'view-list'
+      table.innerHTML = `
+        <thead>
+          <tr><th>名称</th><th>类型</th><th>大小</th><th>路径</th></tr>
+        </thead>
+        <tbody id="listBody"></tbody>
+      `
+      area.appendChild(table)
+      const tbody = document.getElementById('listBody')
+      all.forEach(item => {
+        const tr = document.createElement('tr')
+        tr.dataset.path = item.path
+        tr.dataset.type = item.type
+        tr.dataset.sha = item.sha
+        const dispName = showDatePrefix ? item.name : pureName(item.name)
+        const typeText = item.type === 'dir' ? '文件夹' : '文件'
+        const sizeText = item.type === 'dir' ? '-' : (item.size / 1024).toFixed(2) + ' KB'
+        tr.innerHTML = `
+          <td>${getFileIcon(item.type, item.name)} ${dispName}</td>
+          <td>${typeText}</td>
+          <td>${sizeText}</td>
+          <td>${item.path}</td>
+        `
+        tr.addEventListener('click', e => {
+          e.stopPropagation()
+          clearSelect()
+          tr.classList.add('selected')
+          selectedItem = item
+        })
+        tr.addEventListener('dblclick', () => {
+          if (item.type === 'dir') navigateTo(item.path)
+          else openPreview(item)
+        })
+        tr.addEventListener('contextmenu', e => {
+          e.preventDefault()
+          clearSelect()
+          tr.classList.add('selected')
+          selectedItem = item
+          showContextMenu(e.clientX, e.clientY)
+        })
+        tbody.appendChild(tr)
+      })
     }
-  </script>
+  } catch(e) {
+    area.innerHTML = '<p>加载目录失败</p>'
+  }
+}
+
+// 清空选中
+function clearSelect() {
+  document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
+  selectedItem = null
+}
+
+// 导航切换目录
+async function navigateTo(path) {
+  currentPath = path
+  renderBreadcrumb(path)
+  await loadTree()
+  await renderFileList(path)
+  hideContextMenu()
+}
+
+// ========== 右键菜单 ==========
+const contextMenu = document.getElementById('contextMenu')
+function showContextMenu(x, y) {
+  contextMenu.style.left = x + 'px'
+  contextMenu.style.top = y + 'px'
+  contextMenu.style.display = 'block'
+}
+function hideContextMenu() {
+  contextMenu.style.display = 'none'
+}
+// 点击空白关闭菜单
+document.addEventListener('click', hideContextMenu)
+
+// 右键菜单动作
+contextMenu.querySelectorAll('.menu-item').forEach(item => {
+  item.addEventListener('click', async () => {
+    hideContextMenu()
+    if (!selectedItem) return
+    const act = item.dataset.action
+    const name = selectedItem.name
+    const path = selectedItem.path
+    const type = selectedItem.type
+
+    switch(act) {
+      case 'preview':
+        openPreview(selectedItem)
+        break
+      case 'copy':
+        copyCache = { path, name, type, action: 'copy' }
+        alert('已复制，在空白处右键选择【粘贴】')
+        break
+      case 'cut':
+        copyCache = { path, name, type, action: 'cut' }
+        alert('已剪切，在空白处右键选择【粘贴】')
+        break
+      case 'paste':
+        await doPaste()
+        break
+      case 'rename':
+        openRename()
+        break
+      case 'delete':
+        await doDelete()
+        break
+      case 'prop':
+        openProp()
+        break
+    }
+  })
+})
+
+// ========== 核心功能：新建/上传/复制/剪切/粘贴/删除/重命名/属性/预览 ==========
+// 新建文件夹
+document.getElementById('btnNewFolder').addEventListener('click', () => {
+  document.getElementById('newFolderModal').style.display = 'flex'
+  document.getElementById('newFolderName').value = ''
+  document.getElementById('newFolderName').focus()
+})
+document.getElementById('cancelNew').addEventListener('click', ()=>{
+  document.getElementById('newFolderModal').style.display = 'none'
+})
+document.getElementById('confirmNew').addEventListener('click', async () => {
+  let name = document.getElementById('newFolderName').value.trim()
+  if (!name) return alert('请输入文件夹名称')
+  const fullDirName = fullName(name)
+  const targetPath = `${currentPath}/${fullDirName}/.gitkeep`
+  try {
+    await githubApi(targetPath, 'PUT', { message: `新建文件夹 ${fullDirName}`, content: '' })
+    alert('创建成功')
+    document.getElementById('newFolderModal').style.display = 'none'
+    await renderFileList(currentPath)
+    await loadTree()
+  } catch(e) {
+    alert('创建失败')
+  }
+})
+
+// 上传文件
+document.getElementById('btnUpload').addEventListener('click', () => {
+  document.getElementById('fileUpload').click()
+})
+document.getElementById('fileUpload').addEventListener('change', async e => {
+  const files = e.target.files
+  if (!files.length) return
+  for (const f of files) {
+    const reader = new FileReader()
+    reader.readAsDataURL(f)
+    reader.onload = async () => {
+      const b64 = reader.result.split(',')[1]
+      const path = `${currentPath}/${f.name}`
+      await githubApi(path, 'PUT', { message: `上传 ${f.name}`, content: b64 })
+    }
+  }
+  alert('上传完成')
+  await renderFileList(currentPath)
+})
+
+// 预览图片
+function openPreview(item) {
+  const url = location.origin + '/' + item.path
+  document.getElementById('previewImg').src = url
+  document.getElementById('previewModal').style.display = 'flex'
+}
+document.getElementById('closePreview').addEventListener('click', () => {
+  document.getElementById('previewModal').style.display = 'none'
+})
+
+// 属性
+function openProp() {
+  const item = selectedItem
+  const name = showDatePrefix ? item.name : pureName(item.name)
+  const type = item.type === 'dir' ? '文件夹' : '文件'
+  const size = item.type === 'dir' ? '无' : (item.size / 1024).toFixed(2) + ' KB'
+  const html = `
+    <p>名称：${name}</p>
+    <p>类型：${type}</p>
+    <p>大小：${size}</p>
+    <p>完整路径：${item.path}</p>
+    <p>SHA：${item.sha}</p>
+  `
+  document.getElementById('propContent').innerHTML = html
+  document.getElementById('propModal').style.display = 'flex'
+}
+document.getElementById('closeProp').addEventListener('click', () => {
+  document.getElementById('propModal').style.display = 'none'
+})
+
+// 重命名
+function openRename() {
+  const disp = showDatePrefix ? selectedItem.name : pureName(selectedItem.name)
+  document.getElementById('renameInput').value = disp
+  document.getElementById('renameModal').style.display = 'flex'
+  document.getElementById('renameInput').focus()
+}
+document.getElementById('cancelRename').addEventListener('click', () => {
+  document.getElementById('renameModal').style.display = 'none'
+})
+document.getElementById('confirmRename').addEventListener('click', async () => {
+  const newDisp = document.getElementById('renameInput').value.trim()
+  if (!newDisp) return
+  const newFullName = fullName(newDisp)
+  const oldPath = selectedItem.path
+  const oldName = selectedItem.name
+  const targetPath = oldPath.replace(oldName, newFullName)
+  try {
+    // GitHub 重命名 = 复制+删除
+    const raw = await githubApi(oldPath)
+    await githubApi(targetPath, 'PUT', { message: `重命名 ${oldName} -> ${newFullName}`, content: raw.content, sha: raw.sha })
+    await githubApi(oldPath, 'DELETE', { sha: raw.sha, message: '删除原文件' })
+    alert('重命名成功')
+    document.getElementById('renameModal').style.display = 'none'
+    await navigateTo(currentPath)
+  } catch(e) {
+    alert('重命名失败')
+  }
+})
+
+// 删除
+async function doDelete() {
+  if (!confirm(`确定删除 ${selectedItem.name}？`)) return
+  try {
+    await githubApi(selectedItem.path, 'DELETE', { sha: selectedItem.sha, message: '删除文件' })
+    alert('删除成功')
+    await renderFileList(currentPath)
+    await loadTree()
+  } catch(e) {
+    alert('删除失败')
+  }
+}
+
+// 粘贴（复制/剪切）
+async function doPaste() {
+  if (!copyCache.path) return alert('暂无复制/剪切内容')
+  const oldName = copyCache.name
+  const newPath = `${currentPath}/${oldName}`
+  try {
+    const raw = await githubApi(copyCache.path)
+    await githubApi(newPath, 'PUT', { message: `粘贴 ${oldName}`, content: raw.content })
+    // 剪切则删除原文件
+    if (copyCache.action === 'cut') {
+      await githubApi(copyCache.path, 'DELETE', { sha: raw.sha, message: '剪切删除原文件' })
+    }
+    alert('粘贴成功')
+    copyCache = {}
+    await navigateTo(currentPath)
+  } catch(e) {
+    alert('粘贴失败')
+  }
+}
+
+// 视图切换
+document.getElementById('viewIcon').addEventListener('click', async () => {
+  viewMode = 'icon'
+  await renderFileList(currentPath)
+})
+document.getElementById('viewList').addEventListener('click', async () => {
+  viewMode = 'list'
+  await renderFileList(currentPath)
+})
+
+// 日期显示开关
+document.getElementById('toggleDate').addEventListener('change', async e => {
+  showDatePrefix = e.target.checked
+  await loadTree()
+  await renderFileList(currentPath)
+})
+
+// 初始化
+window.onload = async () => {
+  if (!checkConfig()) return
+  showDatePrefix = document.getElementById('toggleDate').checked
+  await loadTree()
+  await renderFileList(currentPath)
+}
+</script>
 </body>
 </html>
