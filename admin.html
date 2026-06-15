@@ -5,105 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>相册管理后台</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: system-ui;
-    }
-    body {
-      background: #f5f7fa;
-      padding: 24px;
-    }
-    .container {
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-    .header {
-      display: flex;
-      gap: 20px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 30px;
-    }
-    .btn {
-      padding: 8px 16px;
-      background: #2563eb;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      text-decoration: none;
-    }
-    .btn.danger {
-      background: #dc2626;
-    }
-    .btn.success {
-      background: #059669;
-    }
-    .card {
-      background: #fff;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      margin-bottom: 20px;
-    }
-    input, select {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      margin: 8px 0;
-    }
-    .album-item {
-      padding: 12px;
-      border: 1px solid #eee;
-      border-radius: 6px;
-      margin: 8px 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .tip {
-      font-size: 14px;
-      color: #666;
-      margin: 8px 0;
-    }
-    .qrcode {
-      text-align: center;
-      margin: 16px 0;
-    }
-    .secret-key {
-      background: #f5f5f5;
-      padding: 10px;
-      border-radius: 6px;
-      text-align: center;
-      font-family: monospace;
-      word-break: break-all;
-      margin: 10px 0;
-    }
-    .hidden {
-      display: none;
-    }
+    * { margin:0; padding:0; box-sizing:border-box; font-family:system-ui; }
+    body { background:#f5f7fa; padding:24px; }
+    .container { max-width:1200px; margin:0 auto; }
+    .header { display:flex; gap:20px; align-items:center; flex-wrap:wrap; margin-bottom:30px; }
+    .btn { padding:8px 16px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; text-decoration:none; }
+    .btn.danger { background:#dc2626; }
+    .btn.success { background:#059669; }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
+    .card { background:#fff; padding:20px; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.08); margin-bottom:20px; }
+    input,select { width:100%; padding:8px; border:1px solid #e5e7eb; border-radius:6px; margin:8px 0; }
+    .file-item { padding:12px; border:1px solid #eee; border-radius:6px; margin:8px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; }
+    .tip { font-size:14px; color:#666; margin:8px 0; }
+    .qrcode { text-align:center; margin:16px 0; }
+    .secret-key { background:#f5f5f5; padding:10px; border-radius:6px; text-align:center; font-family:monospace; word-break:break-all; margin:10px 0; }
+    .hidden { display:none; }
+    .path-bar { display:flex; align-items:center; gap:8px; margin:10px 0; flex-wrap:wrap; }
+    .path-bar button { padding:4px 8px; background:#eee; border:none; border-radius:4px; cursor:pointer; }
+    .loading { text-align:center; padding:20px; color:#666; }
+    .alert { padding:10px; border-radius:6px; margin:10px 0; }
+    .alert.success { background:#dcfce7; color:#166534; }
+    .alert.error { background:#fee2e2; color:#991b1b; }
   </style>
-  <!-- 二维码库 -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script type="module">
-    import { generateSecret, generateTOTP } from 'https://cdn.jsdelivr.net/npm/@otpjs/core@0.1.1/+esm';
-    window.generateSecret = generateSecret;
-    window.generateTOTP = generateTOTP;
+    import { generateSecret, generateTOTP } from "https://cdn.jsdelivr.net/npm/@otpjs/core@0.1.1/+esm";
+    import { Octokit } from "https://cdn.jsdelivr.net/npm/@octokit/core@5.0.2/+esm";
+    window.generateSecret=generateSecret;
+    window.generateTOTP=generateTOTP;
   </script>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>相册管理后台</h1>
+      <h1>相册管理后台（GitHub 直连）</h1>
       <a href="index.html" class="btn">返回相册</a>
       <button class="btn danger" id="logoutBtn">退出登录</button>
     </div>
 
-    <!-- 首次初始化 + 2FA 绑定页面 -->
+    <!-- 2FA 初始化 -->
     <div id="setupPage" class="hidden">
       <div class="card">
         <h3>🔐 初始化管理员账户（强制绑定2FA）</h3>
@@ -112,7 +52,6 @@
         <input type="password" id="setPwd2" placeholder="重复密码" />
         <button class="btn" id="createAccount">创建账户并生成2FA秘钥</button>
       </div>
-
       <div id="bind2faCard" class="card hidden">
         <h3>📱 绑定 2FA 动态验证</h3>
         <p class="tip">使用 Authenticator 类 App 扫描二维码，或手动复制秘钥</p>
@@ -125,181 +64,322 @@
       </div>
     </div>
 
-    <!-- 相册管理功能页 -->
-    <div id="managePage" class="hidden">
+    <!-- GitHub 配置 -->
+    <div id="configPage" class="hidden">
       <div class="card">
-        <h3>新建相册</h3>
-        <p class="tip">自动生成格式：YYYY-MM-dd-自定义名称</p>
-        <input type="text" id="newAlbumName" placeholder="相册名称" />
-        <p class="tip">预览文件夹名：<span id="previewDir"></span></p>
-        <button class="btn" id="addAlbumBtn">创建相册</button>
+        <h3>⚙️ GitHub 仓库配置（首次填写）</h3>
+        <p class="tip">填写你的 GitHub 用户名、仓库名、PAT（含 repo 权限）</p>
+        <input type="text" id="ghOwner" placeholder="GitHub 用户名" />
+        <input type="text" id="ghRepo" placeholder="仓库名" />
+        <input type="text" id="ghToken" placeholder="GitHub PAT（ghp_...）" />
+        <button class="btn success" id="saveConfig">保存配置</button>
       </div>
+    </div>
 
+    <!-- 文件管理器 -->
+    <div id="fileManagerPage" class="hidden">
       <div class="card">
-        <h3>已有相册列表</h3>
-        <div id="albumList"></div>
-      </div>
-
-      <div class="card">
-        <h3>上传图片</h3>
-        <p class="tip">选择相册后上传，请到 GitHub 仓库在线上传文件</p>
-        <select id="albumSelect"></select>
-        <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" />
+        <h3>📁 文件管理器（albums/）</h3>
+        <div class="path-bar" id="pathBar">
+          <button data-path="albums">albums</button>
+        </div>
+        <div class="tip">当前路径：<span id="currentPath">albums</span></div>
+        <div class="file-actions" style="margin:10px 0; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn" id="newFolderBtn">新建相册文件夹</button>
+          <button class="btn" id="uploadBtn">上传图片</button>
+        </div>
+        <div id="alertBox"></div>
+        <div id="fileList" class="file-list"></div>
       </div>
     </div>
   </div>
 
   <script type="module">
-    const ALBUM_REG = /^\d{4}-\d{2}-\d{2}-/;
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const ALBUM_REG=/^\d{4}-\d{2}-\d{2}-/;
+    const now=new Date();
+    const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
 
-    // 页面容器
-    const setupPage = document.getElementById('setupPage');
-    const managePage = document.getElementById('managePage');
-    const bind2faCard = document.getElementById('bind2faCard');
-    const logoutBtn = document.getElementById('logoutBtn');
+    // 页面元素
+    const setupPage=document.getElementById("setupPage");
+    const configPage=document.getElementById("configPage");
+    const fileManagerPage=document.getElementById("fileManagerPage");
+    const bind2faCard=document.getElementById("bind2faCard");
+    const logoutBtn=document.getElementById("logoutBtn");
+    const alertBox=document.getElementById("alertBox");
 
-    // 登录态校验
-    const adminPwd = localStorage.getItem('admin_pwd');
-    const secret = localStorage.getItem('2fa_secret');
-    const isLogin = localStorage.getItem('admin_logged');
+    // 登录态
+    const adminPwd=localStorage.getItem("admin_pwd");
+    const secret=localStorage.getItem("2fa_secret");
+    const isLogin=localStorage.getItem("admin_logged");
+    const ghOwner=localStorage.getItem("gh_owner");
+    const ghRepo=localStorage.getItem("gh_repo");
+    const ghToken=localStorage.getItem("gh_token");
 
-    if (!adminPwd || !secret) {
-      setupPage.classList.remove('hidden');
-      managePage.classList.add('hidden');
-    } else if (!isLogin) {
-      location.href = 'login.html';
-    } else {
-      setupPage.classList.add('hidden');
-      managePage.classList.remove('hidden');
-      initManageFunc();
+    // 路由
+    if(!adminPwd||!secret){
+      setupPage.classList.remove("hidden");
+      configPage.classList.add("hidden");
+      fileManagerPage.classList.add("hidden");
+    }else if(!isLogin){
+      location.href="login.html";
+    }else if(!ghOwner||!ghRepo||!ghToken){
+      setupPage.classList.add("hidden");
+      configPage.classList.remove("hidden");
+      fileManagerPage.classList.add("hidden");
+      initConfigPage();
+    }else{
+      setupPage.classList.add("hidden");
+      configPage.classList.add("hidden");
+      fileManagerPage.classList.remove("hidden");
+      initFileManager();
     }
 
-    // ========== 2FA 绑定逻辑 ==========
-    let currentSecret = '';
-    const setPwd = document.getElementById('setPwd');
-    const setPwd2 = document.getElementById('setPwd2');
-    const createAccount = document.getElementById('createAccount');
-    const secretKey = document.getElementById('secretKey');
-    const copySecret = document.getElementById('copySecret');
-    const bindCode = document.getElementById('bindCode');
-    const finishBind = document.getElementById('finishBind');
+    // ========== 2FA 绑定 ==========
+    let currentSecret="";
+    const setPwd=document.getElementById("setPwd");
+    const setPwd2=document.getElementById("setPwd2");
+    const createAccount=document.getElementById("createAccount");
+    const secretKey=document.getElementById("secretKey");
+    const copySecret=document.getElementById("copySecret");
+    const bindCode=document.getElementById("bindCode");
+    const finishBind=document.getElementById("finishBind");
 
-    createAccount.addEventListener('click', () => {
-      const p1 = setPwd.value.trim();
-      const p2 = setPwd2.value.trim();
-      if (p1.length < 8) return alert('密码长度不能小于8位');
-      if (p1 !== p2) return alert('两次密码不一致');
-
-      currentSecret = window.generateSecret();
-      localStorage.setItem('admin_pwd', p1);
-      localStorage.setItem('2fa_secret', currentSecret);
-
-      // 生成二维码链接
-      const otpUrl = `otpauth://totp/PhotoAlbum:Admin?secret=${currentSecret}&issuer=PhotoAlbum`;
-      QRCode.toCanvas(document.getElementById('qrcodeCanvas'), otpUrl, { width: 200 });
-      secretKey.innerText = currentSecret;
-      bind2faCard.classList.remove('hidden');
+    createAccount.addEventListener("click",()=>{
+      const p1=setPwd.value.trim();
+      const p2=setPwd2.value.trim();
+      if(p1.length<8)return alert("密码长度不能小于8位");
+      if(p1!==p2)return alert("两次密码不一致");
+      currentSecret=window.generateSecret();
+      localStorage.setItem("admin_pwd",p1);
+      localStorage.setItem("2fa_secret",currentSecret);
+      const otpUrl=`otpauth://totp/PhotoAlbum:Admin?secret=${currentSecret}&issuer=PhotoAlbum`;
+      QRCode.toCanvas(document.getElementById("qrcodeCanvas"),otpUrl,{width:200});
+      secretKey.innerText=currentSecret;
+      bind2faCard.classList.remove("hidden");
     });
 
-    copySecret.addEventListener('click', () => {
-      navigator.clipboard.writeText(currentSecret).then(() => alert('秘钥已复制，请妥善备份'));
+    copySecret.addEventListener("click",()=>{
+      navigator.clipboard.writeText(currentSecret).then(()=>alert("秘钥已复制，请妥善备份"));
     });
 
-    finishBind.addEventListener('click', () => {
-      const code = bindCode.value.trim();
-      if (!/^\d{6}$/.test(code)) return alert('请输入6位数字验证码');
-      if (window.generateTOTP(currentSecret) !== code) return alert('验证码错误');
-
-      localStorage.setItem('admin_logged', '1');
+    finishBind.addEventListener("click",()=>{
+      const code=bindCode.value.trim();
+      if(!/^\d{6}$/.test(code))return alert("请输入6位数字验证码");
+      if(window.generateTOTP(currentSecret)!==code)return alert("验证码错误");
+      localStorage.setItem("admin_logged","1");
       location.reload();
     });
 
-    // ========== 相册管理逻辑 ==========
-    function initManageFunc() {
-      const newAlbumName = document.getElementById('newAlbumName');
-      const previewDir = document.getElementById('previewDir');
-      const addAlbumBtn = document.getElementById('addAlbumBtn');
-      const albumList = document.getElementById('albumList');
-      const albumSelect = document.getElementById('albumSelect');
-      const fileInput = document.getElementById('fileInput');
-
-      // 文件夹名预览
-      newAlbumName.addEventListener('input', () => {
-        previewDir.innerText = `${today}-${newAlbumName.value || '未命名相册'}`;
+    // ========== GitHub 配置页 ==========
+    function initConfigPage(){
+      const ghOwnerEl=document.getElementById("ghOwner");
+      const ghRepoEl=document.getElementById("ghRepo");
+      const ghTokenEl=document.getElementById("ghToken");
+      const saveConfig=document.getElementById("saveConfig");
+      ghOwnerEl.value=ghOwner||"";
+      ghRepoEl.value=ghRepo||"";
+      ghTokenEl.value=ghToken||"";
+      saveConfig.addEventListener("click",()=>{
+        const o=ghOwnerEl.value.trim();
+        const r=ghRepoEl.value.trim();
+        const t=ghTokenEl.value.trim();
+        if(!o||!r||!t)return alert("请填写完整信息");
+        localStorage.setItem("gh_owner",o);
+        localStorage.setItem("gh_repo",r);
+        localStorage.setItem("gh_token",t);
+        location.reload();
       });
+    }
 
-      // 扫描相册
-      async function loadAlbums() {
-        const modules = import.meta.glob('./albums/**/*', { eager: false, as: 'url' });
-        const albumSet = new Set();
-        for (const path in modules) {
-          const arr = path.split('/').filter(Boolean);
-          if (arr.length < 3) continue;
-          const folder = arr[2];
-          if (ALBUM_REG.test(folder)) albumSet.add(folder);
+    // ========== 文件管理器 ==========
+    let octokit;
+    let currentDir="albums";
+    const fileList=document.getElementById("fileList");
+    const pathBar=document.getElementById("pathBar");
+    const currentPathEl=document.getElementById("currentPath");
+    const newFolderBtn=document.getElementById("newFolderBtn");
+    const uploadBtn=document.getElementById("uploadBtn");
+    const fileInput=document.createElement("input");
+    fileInput.type="file";
+    fileInput.multiple=true;
+    fileInput.accept="image/jpeg,image/png,image/webp";
+    uploadBtn.after(fileInput);
+    fileInput.style.display="none";
+
+    function showAlert(msg,isSuccess=true){
+      alertBox.innerHTML=`<div class="alert ${isSuccess?"success":"error"}">${msg}</div>`;
+      setTimeout(()=>alertBox.innerHTML="",3000);
+    }
+
+    function initFileManager(){
+      octokit=new Octokit({auth:ghToken});
+      loadDir(currentDir);
+      // 路径导航
+      pathBar.addEventListener("click",e=>{
+        if(e.target.tagName==="BUTTON"){
+          currentDir=e.target.dataset.path;
+          loadDir(currentDir);
         }
-        renderAlbumList(Array.from(albumSet));
-      }
+      });
+      // 新建文件夹
+      newFolderBtn.addEventListener("click",()=>{
+        const name=prompt("输入相册名称（自动生成YYYY-MM-dd-前缀）：","");
+        if(!name)return;
+        const folderName=`${today}-${name}`;
+        const fullPath=`${currentDir}/${folderName}`;
+        createFolder(fullPath).then(()=>{
+          showAlert(`已创建相册：${folderName}`);
+          loadDir(currentDir);
+        }).catch(err=>showAlert("创建失败："+err.message,false));
+      });
+      // 上传图片
+      uploadBtn.addEventListener("click",()=>fileInput.click());
+      fileInput.addEventListener("change",async e=>{
+        const files=e.target.files;
+        if(!files.length)return;
+        for(const file of files){
+          const reader=new FileReader();
+          reader.onload=async()=>{
+            const content=btoa(reader.result);
+            const path=`${currentDir}/${file.name}`;
+            await createOrUpdateFile(path,content,`上传图片：${file.name}`);
+          };
+          reader.readAsBinaryString(file);
+        }
+        showAlert(`成功上传 ${files.length} 张图片`);
+        loadDir(currentDir);
+        fileInput.value="";
+      });
+    }
 
-      // 渲染相册
-      function renderAlbumList(list) {
-        albumList.innerHTML = '';
-        albumSelect.innerHTML = '<option value="">请选择相册</option>';
-        list.forEach(folder => {
-          const name = folder.replace(ALBUM_REG, '');
-          const item = document.createElement('div');
-          item.className = 'album-item';
-          item.innerHTML = `
-            <div>${folder}（${name}）</div>
-            <button class="btn danger del-btn" data-folder="${folder}">删除</button>
-          `;
-          albumList.appendChild(item);
-
-          const opt = document.createElement('option');
-          opt.value = folder;
-          opt.innerText = folder;
-          albumSelect.appendChild(opt);
+    // 加载目录
+    async function loadDir(dir){
+      currentPathEl.textContent=dir;
+      updatePathBar(dir);
+      fileList.innerHTML='<div class="loading">加载中...</div>';
+      try{
+        const {data}=await octokit.request("GET /repos/{owner}/{repo}/contents/{path}",{
+          owner:ghOwner,repo:ghRepo,path:dir,ref:"main"
         });
-
-        // 删除提示（实际在 GitHub 在线删除文件夹）
-        document.querySelectorAll('.del-btn').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const folder = btn.dataset.folder;
-            if (confirm(`确定删除相册 ${folder}？\n请到 GitHub 仓库在线删除对应文件夹`)) {
-              loadAlbums();
+        // 排序：文件夹在前，文件在后；按名称排序
+        const folders=data.filter(x=>x.type==="dir").sort((a,b)=>a.name.localeCompare(b.name));
+        const files=data.filter(x=>x.type==="file").sort((a,b)=>a.name.localeCompare(b.name));
+        fileList.innerHTML="";
+        // 文件夹
+        folders.forEach(item=>{
+          const isAlbum=ALBUM_REG.test(item.name);
+          const div=document.createElement("div");
+          div.className="file-item";
+          div.innerHTML=`
+            <div>📁 ${item.name} ${isAlbum?"（相册）":""}</div>
+            <div>
+              <button class="btn" data-path="${item.path}">进入</button>
+              <button class="btn danger del-btn" data-path="${item.path}" data-type="dir">删除</button>
+            </div>
+          `;
+          fileList.appendChild(div);
+        });
+        // 文件
+        files.forEach(item=>{
+          const isImg=[".jpg",".jpeg",".png",".webp"].some(ext=>item.name.toLowerCase().endsWith(ext));
+          const div=document.createElement("div");
+          div.className="file-item";
+          div.innerHTML=`
+            <div>📄 ${item.name} ${isImg?"（图片）":""}</div>
+            <div>
+              <button class="btn danger del-btn" data-path="${item.path}" data-type="file">删除</button>
+            </div>
+          `;
+          fileList.appendChild(div);
+        });
+        // 进入文件夹
+        document.querySelectorAll(".file-item .btn:not(.del-btn)").forEach(btn=>{
+          btn.addEventListener("click",()=>{
+            currentDir=btn.dataset.path;
+            loadDir(currentDir);
+          });
+        });
+        // 删除文件/文件夹
+        document.querySelectorAll(".del-btn").forEach(btn=>{
+          btn.addEventListener("click",async()=>{
+            const path=btn.dataset.path;
+            const type=btn.dataset.type;
+            if(!confirm(`确定删除 ${path}？`))return;
+            try{
+              if(type==="file")await deleteFile(path);
+              else await deleteFolder(path);
+              showAlert(`已删除：${path}`);
+              loadDir(currentDir);
+            }catch(err){
+              showAlert("删除失败："+err.message,false);
             }
           });
         });
+      }catch(err){
+        fileList.innerHTML='<div class="loading" style="color:red">加载失败：'+err.message+'</div>';
       }
+    }
 
-      // 新建相册提示
-      addAlbumBtn.addEventListener('click', () => {
-        const name = newAlbumName.value.trim() || '未命名相册';
-        const folder = `${today}-${name}`;
-        alert(`请前往 GitHub 仓库，在 albums 目录下新建文件夹：\n${folder}`);
-        newAlbumName.value = '';
-        loadAlbums();
+    // 更新路径导航
+    function updatePathBar(dir){
+      const parts=dir.split("/");
+      pathBar.innerHTML="";
+      let path="";
+      parts.forEach((p,i)=>{
+        path+=p;
+        const btn=document.createElement("button");
+        btn.textContent=p;
+        btn.dataset.path=path;
+        pathBar.appendChild(btn);
+        if(i<parts.length-1)path+="/";
       });
+    }
 
-      // 上传图片提示
-      fileInput.addEventListener('change', (e) => {
-        const folder = albumSelect.value;
-        if (!folder) return alert('请先选择相册');
-        const files = e.target.files;
-        if (!files.length) return;
-        alert(`已选择 ${files.length} 张图片\n请到 GitHub 仓库对应目录上传文件`);
-        fileInput.value = '';
+    // 创建文件夹（通过创建 .gitkeep 文件实现）
+    async function createFolder(path){
+      const gitkeepPath=`${path}/.gitkeep`;
+      return createOrUpdateFile(gitkeepPath,"","创建文件夹："+path);
+    }
+
+    // 创建/更新文件
+    async function createOrUpdateFile(path,content,message){
+      let sha;
+      try{
+        const {data}=await octokit.request("GET /repos/{owner}/{repo}/contents/{path}",{
+          owner:ghOwner,repo:ghRepo,path,ref:"main"
+        });
+        sha=data.sha;
+      }catch(e){/* 文件不存在 */}
+      return octokit.request("PUT /repos/{owner}/{repo}/contents/{path}",{
+        owner:ghOwner,repo:ghRepo,path,message,content,sha,branch:"main"
       });
+    }
 
-      loadAlbums();
+    // 删除文件
+    async function deleteFile(path){
+      const {data}=await octokit.request("GET /repos/{owner}/{repo}/contents/{path}",{
+        owner:ghOwner,repo:ghRepo,path,ref:"main"
+      });
+      return octokit.request("DELETE /repos/{owner}/{repo}/contents/{path}",{
+        owner:ghOwner,repo:ghRepo,path,message:"删除文件："+path,sha:data.sha,branch:"main"
+      });
+    }
+
+    // 删除文件夹（递归删除所有文件）
+    async function deleteFolder(path){
+      const {data}=await octokit.request("GET /repos/{owner}/{repo}/contents/{path}",{
+        owner:ghOwner,repo:ghRepo,path,ref:"main"
+      });
+      for(const item of data){
+        if(item.type==="file")await deleteFile(item.path);
+        else await deleteFolder(item.path);
+      }
     }
 
     // 退出登录
-    logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('admin_logged');
-      location.href = 'login.html';
+    logoutBtn.addEventListener("click",()=>{
+      localStorage.removeItem("admin_logged");
+      location.href="login.html";
     });
   </script>
 </body>
