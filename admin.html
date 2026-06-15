@@ -287,10 +287,22 @@
       background: #d83b01;
       font-weight: bold;
     }
+
+    /* 配置文件弹窗专属样式 */
+    .config-modal {
+      z-index: 10001;
+    }
+    .config-tip {
+      color:#666;
+      font-size:12px;
+      margin:8px 0;
+      line-height:1.5;
+    }
   </style>
 </head>
 <body>
 <div class="top-bar">
+  <button id="btnConfigFile">加载配置文件</button>
   <button id="btnNewFolder">新建文件夹</button>
   <button id="btnUpload">上传文件</button>
   <div class="view-group">
@@ -333,6 +345,24 @@
   <div class="menu-item item-only" data-action="rename">重命名</div>
   <div class="menu-item item-only" data-action="delete">删除</div>
   <div class="menu-item item-only" data-action="prop">属性</div>
+</div>
+
+<!-- 配置文件上传弹窗（页面强制优先弹出） -->
+<div class="modal config-modal" id="configModal">
+  <div class="modal-box">
+    <div class="modal-title">上传 Github 配置文件（.txt）</div>
+    <div class="config-tip">
+      配置文件格式要求：<br>
+      第1行：Github仓库完整地址<br>
+      第2行：个人Github Token密钥
+    </div>
+    <div class="modal-row">
+      <input type="file" id="configFileInput" accept=".txt">
+    </div>
+    <div class="modal-btn-group">
+      <button class="modal-btn primary" id="confirmConfig">读取并加载仓库</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal loading-modal" id="loadingModal">
@@ -412,10 +442,20 @@ const API_BASE = 'https://api.github.com'
 const loadingModal = document.getElementById('loadingModal')
 const loadingCountBtn = document.getElementById('loadingCountBtn')
 
+// 配置弹窗DOM
+const configModal = document.getElementById('configModal')
+const configFileInput = document.getElementById('configFileInput')
+const confirmConfigBtn = document.getElementById('confirmConfig')
+const btnConfigFile = document.getElementById('btnConfigFile')
+let configFileRaw = null
+
 // 后台任务标记：接口/渲染任务是否还在执行（不会被关闭遮罩打断）
 let taskRunning = false;
 // 界面锁定标记：控制按钮禁用、遮罩显示
 let uiLocked = false;
+// 未加载配置全局锁定开关
+let noConfigLock = true;
+
 let loadingTimer = null;
 const MAX_LOAD_SECONDS = 10;
 let currentCount = MAX_LOAD_SECONDS;
@@ -437,6 +477,7 @@ function closeLoadingMaskOnly() {
   loadingCountBtn.classList.remove('timeout');
   // 恢复全部按钮可用
   document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
+    if(noConfigLock && btn.id !== 'btnConfigFile') return
     btn.disabled = false;
   })
 }
@@ -481,10 +522,56 @@ loadingCountBtn.addEventListener('click', () => {
   }
 })
 
+// ====================== 配置文件上传读取逻辑 ======================
+// 打开配置弹窗
+btnConfigFile.addEventListener('click', () => {
+  configFileInput.value = ''
+  configFileRaw = null
+  configModal.style.display = 'flex'
+})
+// 选择文件缓存
+configFileInput.addEventListener('change', e => {
+  const file = e.target.files[0]
+  if(!file) return
+  configFileRaw = file
+})
+// 读取txt配置
+confirmConfigBtn.addEventListener('click', async () => {
+  if(!configFileRaw) {
+    alert('请先选择txt配置文件')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = e => {
+    const text = e.target.result.trim()
+    const lines = text.split('\n').map(s=>s.trim()).filter(s=>s)
+    if(lines.length < 2) {
+      alert('配置文件格式错误！至少两行：第一行仓库地址，第二行token')
+      return
+    }
+    // 写入全局配置
+    globalConfig = {
+      repoUrl: lines[0],
+      githubToken: lines[1]
+    }
+    localStorage.setItem(STORAGE_CONFIG, JSON.stringify(globalConfig))
+    // 关闭弹窗，解除全局锁定，加载仓库
+    configModal.style.display = 'none'
+    noConfigLock = false
+    refreshCurrentDir()
+  }
+  reader.readAsText(configFileRaw)
+})
+
+// 校验配置（改造：不再本地读取存储，仅判断内存是否存在）
 function checkConfig() {
-  globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
   if (!globalConfig) {
-    alert("请先完成系统配置！")
+    configModal.style.display = 'flex'
+    noConfigLock = true
+    // 锁定所有功能按钮，仅保留加载配置按钮
+    document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
+      if(btn.id !== 'btnConfigFile') btn.disabled = true
+    })
     return false
   }
   return true
@@ -667,6 +754,7 @@ async function reloadAllView() {
 
 // 刷新按钮主逻辑
 async function refreshCurrentDir() {
+  if(!checkConfig()) return
   if (uiLocked || taskRunning) return;
   startLoading();
   try {
@@ -700,6 +788,7 @@ async function scanDirTree(path, parent, level) {
       item.innerHTML = `<span>📁</span> ${showDatePrefix ? d.name : pureName(d.name)}`
       if (d.path === currentPath) item.classList.add('active')
       item.addEventListener('click', async () => {
+        if(!checkConfig()) return
         if (uiLocked || taskRunning) return;
         startLoading();
         try {
@@ -730,6 +819,7 @@ function renderBreadcrumb(path) {
   bc.innerHTML = html
   bc.querySelectorAll('a').forEach(a => {
     a.addEventListener('click', async () => {
+      if(!checkConfig()) return
       if (uiLocked || taskRunning) return;
       startLoading();
       try {
@@ -745,6 +835,7 @@ function renderBreadcrumb(path) {
 
 const contextMenu = document.getElementById('contextMenu')
 function showContextMenu(x, y, hasFile) {
+  if(!checkConfig()) return
   document.querySelectorAll('.item-only').forEach(el => {
     el.classList.toggle('menu-disabled', !hasFile || uiLocked)
   })
@@ -770,6 +861,7 @@ async function renderFileList(path) {
 
     const bindItemEvent = (el, item) => {
       el.addEventListener('click', e => {
+        if(!checkConfig()) return
         if (uiLocked) return;
         e.stopPropagation()
         if (!multiSelectMode) clearAllSelect()
@@ -781,6 +873,7 @@ async function renderFileList(path) {
         }
       })
       el.addEventListener('dblclick', async () => {
+        if(!checkConfig()) return
         if (uiLocked || taskRunning) return;
         if (item.type === 'dir') {
           startLoading();
@@ -793,6 +886,7 @@ async function renderFileList(path) {
         } else openPreview(item)
       })
       el.addEventListener('contextmenu', e => {
+        if(!checkConfig()) return
         if (uiLocked) return;
         e.preventDefault()
         e.stopPropagation()
@@ -863,6 +957,7 @@ function initDragSelect() {
   const selectBox = document.createElement('div')
   selectBox.className = 'select-box'
   area.addEventListener('mousedown', e => {
+    if(!checkConfig()) return
     if (uiLocked || e.target !== area) return
     clearAllSelect()
     dragStart = true
@@ -876,6 +971,7 @@ function initDragSelect() {
     area.appendChild(selectBox)
   })
   area.addEventListener('mousemove', e => {
+    if(!checkConfig()) return
     if (!dragStart || uiLocked) return
     const rect = area.getBoundingClientRect()
     const curX = e.clientX - rect.left
@@ -886,6 +982,7 @@ function initDragSelect() {
     selectBox.style.top = Math.min(startY - rect.top, curY) + 'px'
   })
   area.addEventListener('mouseup', () => {
+    if(!checkConfig()) return
     if (!dragStart || uiLocked) return
     dragStart = false
     const boxRect = selectBox.getBoundingClientRect()
@@ -909,6 +1006,7 @@ function initDragSelect() {
 }
 
 document.getElementById('fileArea').addEventListener('contextmenu', e => {
+  if(!checkConfig()) return
   if (uiLocked) return;
   e.preventDefault()
   clearAllSelect()
@@ -917,6 +1015,7 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
 document.addEventListener('click', hideContextMenu)
 
 document.getElementById('toggleMulti').addEventListener('change', e => {
+  if(!checkConfig()) return
   if (uiLocked) return;
   multiSelectMode = e.target.checked
   clearAllSelect()
@@ -926,6 +1025,7 @@ document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDi
 
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
   item.addEventListener('click', async () => {
+    if(!checkConfig()) return
     if (uiLocked) return;
     hideContextMenu()
     const act = item.dataset.action
@@ -973,6 +1073,7 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
 
 // 批量删除选中【文件串行删除】
 async function batchDeleteSelected() {
+  if(!checkConfig()) return
   if (uiLocked || taskRunning || !selectedItems.length) return
   const dirItems = selectedItems.filter(i => i.type === 'dir')
   const fileItems = selectedItems.filter(i => i.type === 'file')
@@ -1005,6 +1106,7 @@ async function batchDeleteSelected() {
 
 // 粘贴复制/剪切缓存【文件串行处理】
 async function doPaste() {
+  if(!checkConfig()) return
   if (uiLocked || taskRunning || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
   const isCut = copyCache.action === 'cut'
   const targetParent = currentPath
@@ -1044,6 +1146,7 @@ document.getElementById('uploadPanelClose').addEventListener('click', ()=>{
 })
 
 document.getElementById('btnNewFolder').addEventListener('click', () => {
+  if(!checkConfig()) return
   if (uiLocked) return;
   document.getElementById('newFolderModal').style.display = 'flex'
   document.getElementById('newFolderName').value = ''
@@ -1053,6 +1156,7 @@ document.getElementById('cancelNew').addEventListener('click', ()=>{
   document.getElementById('newFolderModal').style.display = 'none'
 })
 document.getElementById('confirmNew').addEventListener('click', async () => {
+  if(!checkConfig()) return
   if (uiLocked || taskRunning) return;
   let name = document.getElementById('newFolderName').value.trim()
   if (!name) return alert('请输入文件夹名称')
@@ -1073,11 +1177,13 @@ document.getElementById('confirmNew').addEventListener('click', async () => {
 })
 
 document.getElementById('btnUpload').addEventListener('click', () => {
+  if(!checkConfig()) return
   if (uiLocked) return;
   document.getElementById('fileUpload').click()
 })
 
 document.getElementById('fileUpload').addEventListener('change', async e => {
+  if(!checkConfig()) return
   if (uiLocked || taskRunning) return;
   const files = e.target.files
   if (!files.length) return
@@ -1147,6 +1253,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
 })
 
 function openPreview(item) {
+  if(!checkConfig()) return
   if (uiLocked) return;
   const url = location.origin + '/' + item.path
   document.getElementById('previewImg').src = url
@@ -1157,6 +1264,7 @@ document.getElementById('closePreview').addEventListener('click', () => {
 })
 
 function openProp() {
+  if(!checkConfig()) return
   if (uiLocked) return;
   const item = selectedItems[0]
   const name = showDatePrefix ? item.name : pureName(item.name)
@@ -1177,6 +1285,7 @@ document.getElementById('closeProp').addEventListener('click', () => {
 })
 
 function openRename() {
+  if(!checkConfig()) return
   if (uiLocked) return;
   const disp = showDatePrefix ? selectedItems[0].name : pureName(selectedItems[0].name)
   document.getElementById('renameInput').value = disp
@@ -1187,69 +1296,10 @@ document.getElementById('cancelRename').addEventListener('click', () => {
   document.getElementById('renameModal').style.display = 'none'
 })
 document.getElementById('confirmRename').addEventListener('click', async () => {
+  if(!checkConfig()) return
   if (uiLocked || taskRunning) return;
   const newDisp = document.getElementById('renameInput').value.trim()
   if (!newDisp) return
   const newFullName = fullName(newDisp)
   const oldItem = selectedItems[0]
-  const parentPath = oldItem.path.substring(0, oldItem.path.lastIndexOf('/'))
-  const newFullPath = `${parentPath}/${newFullName}`
-  document.getElementById('renameModal').style.display = 'none'
-
-  startLoading();
-  try {
-    if(oldItem.type === 'file'){
-      const raw = await githubApiRead(oldItem.path)
-      await sleep(API_DELAY)
-      await githubApiWrite(newFullPath, 'PUT', { message: `重命名 ${oldItem.name} -> ${newFullName}`, content: raw.content })
-      await sleep(API_DELAY)
-      await githubApiWrite(oldItem.path, 'DELETE', { sha: raw.sha, message: '删除原文件' })
-    }else{
-      await moveFolder(oldItem.path, newFullPath)
-    }
-    await reloadAllView();
-  } catch (err) {
-    alert('重命名操作失败')
-    console.error(err)
-  } finally {
-    fullEndLoading();
-  }
-})
-
-document.getElementById('viewIcon').addEventListener('click', async () => {
-  if (uiLocked || taskRunning) return;
-  viewMode = 'icon'
-  startLoading();
-  try {
-    await renderFileList(currentPath)
-  } finally {
-    fullEndLoading();
-  }
-})
-document.getElementById('viewList').addEventListener('click', async () => {
-  if (uiLocked || taskRunning) return;
-  viewMode = 'list'
-  startLoading();
-  try {
-    await renderFileList(currentPath)
-  } finally {
-    fullEndLoading();
-  }
-})
-
-document.getElementById('toggleDate').addEventListener('change', async e => {
-  if (uiLocked || taskRunning) return;
-  showDatePrefix = e.target.checked
-  await refreshCurrentDir()
-})
-
-window.onload = async () => {
-  if (!checkConfig()) return
-  showDatePrefix = document.getElementById('toggleDate').checked
-  multiSelectMode = document.getElementById('toggleMulti').checked
-  uploadPanel.classList.add('hidden')
-  await refreshCurrentDir()
-}
-</script>
-</body>
-</html>
+ 
