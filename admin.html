@@ -1,8 +1,13 @@
 <!DOCTYPE html>
+<!-- 强制浏览器永不缓存页面本体 -->
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 全套防缓存 Meta 标签，彻底禁止本地/CDN 缓存 -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>相册管理后台 - Windows 风格文件管理器</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
@@ -58,18 +63,33 @@
     .tree-item.active { background: #0078d4; color: #fff; }
     .tree-indent { margin-left: 14px; }
 
-    /* 右侧主区域 */
-    .main { flex: 1; display: flex; flex-direction: column; }
-    .breadcrumb {
+    /* 右侧面包屑地址栏（可编辑输入框，仿Windows） */
+    .breadcrumb-wrap {
       height: 32px;
       line-height: 32px;
       padding: 0 16px;
       background: #fff;
       border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      gap:10px;
+    }
+    .path-input {
+      flex:1;
+      height:24px;
+      padding:0 8px;
+      border:1px solid #ddd;
+      border-radius:2px;
       font-size:13px;
     }
-    .breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
-    .breadcrumb a:hover { text-decoration:underline; }
+    .refresh-btn {
+      padding:0 10px;
+      height:24px;
+      border:1px solid #ccc;
+      background:#f8f8f8;
+      cursor:pointer;
+      font-size:13px;
+    }
 
     /* 文件区域 - 全局支持右键（空白+文件） */
     .file-area { 
@@ -248,8 +268,10 @@
 
   <!-- 右侧主区域 -->
   <div class="main">
-    <div class="breadcrumb" id="breadcrumb">
-      <a data-path="public/albums">相册根目录</a>
+    <!-- 可编辑路径地址栏 + 刷新按钮 -->
+    <div class="breadcrumb-wrap">
+      <input class="path-input" id="pathInput" placeholder="输入完整路径回车跳转">
+      <button class="refresh-btn" id="refreshBtn">刷新目录</button>
     </div>
     <!-- 文件区域：全局监听右键、单击空白取消选中 -->
     <div class="file-area" id="fileArea"></div>
@@ -336,6 +358,7 @@
 
 <script>
 const STORAGE_CONFIG = 'album_global_config'
+const STORAGE_LAST_PATH = 'album_last_browse_path' // 持久保存上次浏览路径
 let globalConfig = null
 let currentPath = 'public/albums'
 let viewMode = 'icon'
@@ -344,14 +367,23 @@ let copyCache = { path: '', name: '', type: '', action: '' }
 let selectedItem = null
 const API_BASE = 'https://api.github.com'
 
-// ========== 配置初始化 ==========
+// ========== 配置初始化 + 恢复上次浏览路径 ==========
 function checkConfig() {
   globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
   if (!globalConfig) {
     alert("请先完成系统配置！")
     return false
   }
+  // 读取上次打开的目录，刷新页面自动恢复
+  const savedPath = localStorage.getItem(STORAGE_LAST_PATH)
+  if(savedPath) currentPath = savedPath
   return true
+}
+function saveCurrentPathCache(){
+  // 每次切换目录自动保存到本地存储，页面刷新不丢失
+  localStorage.setItem(STORAGE_LAST_PATH, currentPath)
+  // 更新顶部可编辑地址框内容
+  document.getElementById('pathInput').value = currentPath
 }
 function parseRepo() {
   const url = globalConfig.repoUrl
@@ -359,14 +391,20 @@ function parseRepo() {
   return { owner: arr[0], repo: arr[1] }
 }
 
-// ========== GitHub API ==========
+// ========== GitHub API（全部追加随机防缓存参数，杜绝接口缓存） ==========
 async function githubApi(path, method = 'GET', body = null) {
   const { owner, repo } = parseRepo()
   const headers = {
     'Authorization': `token ${globalConfig.githubToken}`,
-    'Accept': 'application/vnd.github.v3+json'
+    'Accept': 'application/vnd.github.v3+json',
+    // 请求头强制不缓存接口
+    'Cache-Control':'no-cache, no-store, must-revalidate',
+    'Pragma':'no-cache'
   }
-  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+  // URL 拼接随机时间戳，彻底绕过CDN/浏览器缓存
+  const cacheRand = new Date().getTime()
+  const reqUrl = `${API_BASE}/repos/${owner}/${repo}/contents/${path}?_rand=${cacheRand}`
+  const res = await fetch(reqUrl, {
     method, headers, body: body ? JSON.stringify(body) : null
   })
   if (!res.ok) throw new Error('请求失败')
@@ -416,24 +454,6 @@ async function scanDirTree(path, parent, level) {
       await scanDirTree(d.path, parent, level + 1)
     }
   } catch(e) { console.error(e) }
-}
-
-// ========== 面包屑导航 ==========
-function renderBreadcrumb(path) {
-  const bc = document.getElementById('breadcrumb')
-  const parts = path.split('/')
-  let temp = ''
-  let html = `<a data-path="public/albums">相册根目录</a>`
-  for (let i = 2; i < parts.length; i++) {
-    temp += '/' + parts[i]
-    const p = 'public/albums' + temp
-    const n = showDatePrefix ? parts[i] : pureName(parts[i])
-    html += ` / <a data-path="${p}">${n}</a>`
-  }
-  bc.innerHTML = html
-  bc.querySelectorAll('a').forEach(a => {
-    a.addEventListener('click', () => navigateTo(a.dataset.path))
-  })
 }
 
 // ========== 文件列表渲染 ==========
@@ -535,10 +555,10 @@ function clearSelect() {
   selectedItem = null
 }
 
-// 导航切换目录
+// 导航切换目录（自动保存当前路径缓存）
 async function navigateTo(path) {
   currentPath = path
-  renderBreadcrumb(path)
+  saveCurrentPathCache() // 持久化保存路径，刷新页面不丢失
   await loadTree()
   await renderFileList(path)
   hideContextMenu()
@@ -554,7 +574,7 @@ fileArea.addEventListener('contextmenu', e => {
   clearSelect()
   showContextMenu(e.clientX, e.clientY, false)
 })
-// 点击空白取消菜单
+// 点击空白关闭菜单
 document.addEventListener('click', hideContextMenu)
 
 // 显示菜单：hasItem = true 选中文件 / false 空白区域
@@ -619,6 +639,30 @@ contextMenu.querySelectorAll('.menu-item:not(.menu-disabled)').forEach(item => {
         break
     }
   })
+})
+
+// ========== 顶部可编辑路径输入框逻辑（仿Windows地址栏） ==========
+const pathInput = document.getElementById('pathInput')
+pathInput.addEventListener('keydown', async (e)=>{
+  if(e.key === 'Enter'){
+    const inputPath = pathInput.value.trim()
+    if(!inputPath) return
+    try{
+      // 校验路径是否存在
+      await githubApi(inputPath)
+      navigateTo(inputPath)
+    }catch(err){
+      alert('路径不存在，请输入合法目录路径（示例：public/albums/2026-06-15-test）')
+      pathInput.value = currentPath
+    }
+  }
+})
+
+// 刷新目录按钮
+document.getElementById('refreshBtn').addEventListener('click', async ()=>{
+  await renderFileList(currentPath)
+  await loadTree()
+  alert('目录已刷新')
 })
 
 // ========== 上传进度面板逻辑 ==========
@@ -720,7 +764,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
         statusText.className = 'upload-status status-error'
       }
       reader.readAsDataURL(file)
-    } catch (err) {
+    } catch (err)
       progressInner.style.width = '0%'
       statusText.textContent = '上传失败：' + err.message
       statusText.className = 'upload-status status-error'
@@ -734,7 +778,9 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
 
 // 预览图片
 function openPreview(item) {
-  const url = location.origin + '/' + item.path
+  // 图片链接增加随机戳，禁止图片缓存
+  const cacheRand = new Date().getTime()
+  const url = location.origin + '/' + item.path + '?_rand=' + cacheRand
   document.getElementById('previewImg').src = url
   document.getElementById('previewModal').style.display = 'flex'
 }
@@ -812,6 +858,7 @@ async function doPaste() {
   try {
     const raw = await githubApi(copyCache.path)
     await githubApi(newPath, 'PUT', { message: `粘贴 ${oldName}`, content: raw.content })
+    // 剪切则删除原文件
     if (copyCache.action === 'cut') {
       await githubApi(copyCache.path, 'DELETE', { sha: raw.sha, message: '剪切删除原文件' })
     }
@@ -844,8 +891,8 @@ document.getElementById('toggleDate').addEventListener('change', async e => {
 window.onload = async () => {
   if (!checkConfig()) return
   showDatePrefix = document.getElementById('toggleDate').checked
-  // 默认隐藏上传面板
   uploadPanel.classList.add('hidden')
+  saveCurrentPathCache() // 初始化填充地址框
   await loadTree()
   await renderFileList(currentPath)
 }
