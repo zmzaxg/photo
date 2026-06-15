@@ -1,31 +1,35 @@
-import { defineConfig } from "vite";
-import path from "path";
+import { defineConfig } from 'vite'
+import path from 'path'
 
 export default defineConfig({
-  // 开发服务配置
+  root: __dirname,
+  publicDir: path.resolve(__dirname, './albums'),
+
   server: {
-    host: "0.0.0.0",
+    host: '0.0.0.0',
     port: 3000,
-    open: true,
+    open: true
   },
 
-  // 静态资源：根目录 albums 作为可访问静态目录
-  publicDir: path.resolve(__dirname, "./albums"),
-
-  // 打包配置（EdgeOne/GitHub 自动构建专用）
   build: {
-    outDir: "dist",
+    outDir: 'dist',
     emptyOutDir: true,
-    assetsDir: "assets",
+    assetsDir: 'assets',
+    rollupOptions: {
+      // 把 admin.html、login.html 都打到 dist 根目录
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        login: path.resolve(__dirname, 'login.html'),
+        admin: path.resolve(__dirname, 'admin.html')
+      }
+    }
   },
 
-  // 基础路径：适配 EdgeOne 根域名/子路径部署
-  base: "./",
+  base: './',
 
-  // 全局别名，统一资源路径
   resolve: {
     alias: {
-      "@albums": path.resolve(__dirname, "./albums"),
-    },
-  },
-});
+      '@albums': path.resolve(__dirname, './albums')
+    }
+  }
+})
