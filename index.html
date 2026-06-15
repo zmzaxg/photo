@@ -5,304 +5,427 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>静态相册</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, sans-serif; }
-    body { padding: 20px; background: #f5f5f5; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
     h1 { text-align: center; margin-bottom: 30px; color: #333; }
-    .nav-bar { margin-bottom: 20px; text-align: center; }
-    .nav-bar a { padding: 8px 16px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 4px; margin: 0 5px; }
-    .album-grid {
+
+    /* 相册列表网格布局 3~4列 响应式 */
+    .album-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 20px;
+      gap: 24px;
       max-width: 1400px;
       margin: 0 auto;
     }
-    .album-card {
+    .album-item {
       background: #fff;
       border-radius: 8px;
       overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       transition: transform 0.2s;
     }
-    .album-card:hover { transform: translateY(-4px); }
+    .album-item:hover { transform: translateY(-4px); }
     .album-thumb {
       width: 100%;
       height: 150px;
-      object-fit: cover;
+      object-fit: cover; /* 统一200*150等比裁剪 */
       display: block;
     }
     .album-name {
       padding: 12px;
       text-align: center;
-      color: #333;
+      color: #444;
       font-size: 14px;
     }
 
-    /* 图片详情页样式 */
-    .detail-wrap { display: none; max-width: 1200px; margin: 0 auto; }
-    .detail-header { margin: 20px 0; }
+    /* 图片详情页 */
+    .detail-container {
+      display: none;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
     .back-btn {
       padding: 8px 16px;
-      background: #666;
+      background: #2563eb;
       color: #fff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      margin-bottom: 20px;
+      font-size: 14px;
     }
-    .img-container {
-      text-align: center;
-      margin: 20px 0;
-    }
-    .main-img {
+    .img-wrapper {
+      position: relative;
+      margin: 0 auto 20px;
       max-width: 90vw;
-      max-height: 80vh;
-      cursor: grab;
-    }
-    .main-img:active { cursor: grabbing; }
-    .exif-panel, .link-panel {
-      background: #fff;
-      padding: 16px;
+      overflow: hidden;
       border-radius: 8px;
-      margin: 15px auto;
-      max-width: 800px;
+      background: #000;
+    }
+    .preview-img {
+      max-width: 90vw;
+      cursor: grab;
+      transform-origin: center center;
+    }
+    .preview-img:active { cursor: grabbing; }
+
+    /* EXIF 信息 & 链接区域 */
+    .info-panel {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
+    .info-item { margin: 8px 0; font-size: 14px; color: #333; }
+    .link-box {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
     .link-input {
-      width: 100%;
+      flex: 1;
       padding: 8px;
-      margin: 8px 0;
       border: 1px solid #ddd;
       border-radius: 4px;
     }
     .copy-btn {
-      padding: 6px 12px;
+      padding: 8px 16px;
       background: #10b981;
       color: #fff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
     }
-    .tip { color: #666; font-size: 13px; margin-top: 5px; }
+
+    /* 全局配置弹窗 */
+    .config-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal-box {
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+    }
+    .modal-box h3 { margin-bottom: 16px; }
+    .modal-box p { margin: 8px 0; color: #666; }
+    .modal-box input {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .modal-box button {
+      padding: 10px 20px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
   </style>
-  <!-- 引入 EXIF 解析库 CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.6.1/dist/piexif.min.js"></script>
 </head>
 <body>
-  <h1>个人相册</h1>
-  <div class="nav-bar">
-    <a href="admin.html">进入管理后台</a>
+  <!-- 配置检测弹窗 -->
+  <div id="configModal" class="config-modal">
+    <div class="modal-box">
+      <h3>系统初始化配置</h3>
+      <p>请先填写基础配置（EdgeOne + GitHub 部署必需）</p>
+      <p>GitHub 仓库地址：</p>
+      <input type="text" id="repoUrl" placeholder="格式：https://github.com/用户名/仓库名">
+      <p>GitHub Token（权限 repo）：</p>
+      <input type="text" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
+      <button id="saveConfig">保存配置</button>
+    </div>
   </div>
 
   <!-- 相册列表页 -->
-  <div id="albumList" class="album-grid"></div>
+  <div id="albumPage">
+    <h1>我的相册</h1>
+    <div class="album-list" id="albumList"></div>
+  </div>
 
   <!-- 图片详情页 -->
-  <div id="photoDetail" class="detail-wrap">
-    <div class="detail-header">
-      <button class="back-btn" onclick="goBack()">← 返回相册</button>
+  <div id="detailPage" class="detail-container">
+    <button class="back-btn" id="backBtn">← 返回相册列表</button>
+    <div class="img-wrapper">
+      <img id="previewImg" class="preview-img" alt="预览图">
     </div>
-    <div class="img-container">
-      <img id="mainImage" class="main-img" draggable="false">
-    </div>
-    <div class="link-panel">
-      <h3>图片外链地址</h3>
-      <input type="text" id="imgLink" class="link-input" readonly>
-      <button class="copy-btn" onclick="copyLink()">一键复制</button>
-      <p class="tip" id="copyTip"></p>
-    </div>
-    <div class="exif-panel">
-      <h3>EXIF 拍摄信息</h3>
-      <div id="exifInfo">加载中...</div>
+    <div class="info-panel">
+      <div class="info-item"><strong>图片链接：</strong></div>
+      <div class="link-box">
+        <input type="text" id="imgLink" class="link-input" readonly>
+        <button class="copy-btn" id="copyLink">一键复制</button>
+      </div>
+      <div class="info-item"><strong>EXIF 拍摄时间：</strong><span id="exifTime">暂无</span></div>
+      <div class="info-item"><strong>相机型号：</strong><span id="exifCamera">暂无</span></div>
+      <div class="info-item"><strong>曝光参数：</strong><span id="exifParam">暂无</span></div>
+      <div class="info-item"><strong>GPS 坐标：</strong><span id="exifGps">暂无</span></div>
     </div>
   </div>
 
+  <!-- 引入 EXIF 解析库 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
+
   <script type="module">
-    // 全局变量
-    const ALBUM_BASE = '/albums/';
-    const THUMB_W = 200;
-    const THUMB_H = 150;
-    let currentAlbum = '';
-    let currentPhoto = '';
+    // ===================== 1. 全局配置检测 =====================
+    const configModal = document.getElementById('configModal')
+    const saveConfig = document.getElementById('saveConfig')
+    const repoUrlInput = document.getElementById('repoUrl')
+    const tokenInput = document.getElementById('githubToken')
+    const STORAGE_KEY = 'album_global_config'
 
-    // 1. 路由监听 Hash 切换
-    window.addEventListener('hashchange', handleRoute);
-    window.addEventListener('load', init);
-
-    async function init() {
-      handleRoute();
-      await loadAlbumList();
+    // 读取本地配置
+    let globalConfig = JSON.parse(localStorage.getItem(STORAGE_KEY)) || null
+    if (!globalConfig) {
+      configModal.style.display = 'flex'
+    } else {
+      configModal.style.display = 'none'
     }
 
-    // 路由分发：列表页 / 详情页
-    function handleRoute() {
-      const hash = window.location.hash.slice(1);
-      const params = new URLSearchParams(hash);
-      const album = params.get('album');
-      const photo = params.get('photo');
+    // 保存配置
+    saveConfig.addEventListener('click', () => {
+      const repo = repoUrlInput.value.trim()
+      const token = tokenInput.value.trim()
+      if (!repo || !token) return alert('仓库地址和Token不能为空')
+      globalConfig = { repoUrl: repo, githubToken: token }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(globalConfig))
+      configModal.style.display = 'none'
+      initApp() // 配置完成后初始化应用
+    })
 
-      const listDom = document.getElementById('albumList');
-      const detailDom = document.getElementById('photoDetail');
+    // ===================== 2. 全局变量 =====================
+    const ALBUM_BASE = '/albums/'
+    const THUMB_SIZE = { w: 200, h: 150 }
+    const albumPage = document.getElementById('albumPage')
+    const detailPage = document.getElementById('detailPage')
+    const albumList = document.getElementById('albumList')
+    const backBtn = document.getElementById('backBtn')
+    const previewImg = document.getElementById('previewImg')
+    const imgLink = document.getElementById('imgLink')
+    const copyLink = document.getElementById('copyLink')
 
+    // 路由参数解析（hash 模式）
+    function parseHash() {
+      const hash = location.hash.slice(1)
+      const params = new URLSearchParams(hash)
+      return {
+        album: params.get('album'),
+        photo: params.get('photo')
+      }
+    }
+
+    // 页面切换
+    function switchPage({ album, photo }) {
       if (album && photo) {
-        // 进入图片详情
-        listDom.style.display = 'none';
-        detailDom.style.display = 'block';
-        currentAlbum = album;
-        currentPhoto = photo;
-        loadPhotoDetail(album, photo);
+        albumPage.style.display = 'none'
+        detailPage.style.display = 'block'
+        loadPhotoDetail(album, photo)
       } else {
-        // 回到相册列表
-        listDom.style.display = 'grid';
-        detailDom.style.display = 'none';
+        albumPage.style.display = 'block'
+        detailPage.style.display = 'none'
       }
     }
 
-    // 2. 扫描 albums 目录，筛选 YYYY-MM-dd- 格式相册
-    async function loadAlbumList() {
-      const albumListDom = document.getElementById('albumList');
-      albumListDom.innerHTML = '<div>加载相册中...</div>';
+    // 返回按钮
+    backBtn.addEventListener('click', () => {
+      location.hash = ''
+    })
 
-      // Vite 全局扫描 public/albums 下所有子目录
-      const albumFiles = import.meta.glob('/public/albums/*', { eager: false });
-      const albumDirs = Object.keys(albumFiles)
-        .map(path => {
-          const dirName = path.replace('/public/albums/', '').replace('/', '');
-          return dirName;
-        })
-        // 正则筛选：YYYY-MM-dd- 开头的文件夹
-        .filter(name => /^\d{4}-\d{2}-\d{2}-/.test(name));
+    // 监听 hash 变化（浏览器前进/后退）
+    window.addEventListener('hashchange', () => {
+      switchPage(parseHash())
+    })
 
-      albumListDom.innerHTML = '';
-
-      // 遍历相册，生成卡片 + 缩略图
-      for (const dir of albumDirs) {
-        const albumName = dir.replace(/^\d{4}-\d{2}-\d{2}-/, '');
-        const albumPath = `${ALBUM_BASE}${dir}/`;
-
-        // 读取相册内图片
-        const imgReg = /\.(jpg|jpeg|png|webp)$/i;
-        const photoFiles = import.meta.glob(`/public/albums/${dir}/*`, { eager: false });
-        const photos = Object.keys(photoFiles)
-          .map(p => p.replace(`/public/albums/${dir}/`, ''))
-          .filter(f => imgReg.test(f));
-
-        if (photos.length === 0) continue;
-
-        // 取第一张图生成缩略图
-        const firstImgSrc = `${ALBUM_BASE}${dir}/${photos[0]}`;
-        const thumbCanvas = await createThumbnail(firstImgSrc, THUMB_W, THUMB_H);
-
-        // 构建相册卡片
-        const card = document.createElement('div');
-        card.className = 'album-card';
-        card.onclick = () => window.location.hash = `album=${dir}&photo=${photos[0]}`;
-        card.innerHTML = `
-          <canvas class="album-thumb" width="${THUMB_W}" height="${THUMB_H}"></canvas>
-          <div class="album-name">${albumName}</div>
-        `;
-        // 绘制缩略图到 canvas
-        const canvas = card.querySelector('canvas');
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(thumbCanvas, 0, 0, THUMB_W, THUMB_H);
-
-        albumListDom.appendChild(card);
+    // 一键复制链接
+    copyLink.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(imgLink.value)
+        alert('链接复制成功')
+      } catch (e) {
+        alert('复制失败，请手动复制')
       }
+    })
+
+    // ===================== 3. Canvas 生成缩略图 =====================
+    function createThumbnail(imgSrc, callback) {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        canvas.width = THUMB_SIZE.w
+        canvas.height = THUMB_SIZE.h
+
+        // 等比居中裁剪 object-fit: cover
+        const scale = Math.max(canvas.width / img.width, canvas.height / img.height)
+        const w = img.width * scale
+        const h = img.height * scale
+        const x = (canvas.width - w) / 2
+        const y = (canvas.height - h) / 2
+
+        ctx.drawImage(img, x, y, w, h)
+        callback(canvas.toDataURL('image/jpeg', 0.8))
+      }
+      img.src = imgSrc
     }
 
-    // 3. Canvas 生成等比裁剪缩略图
-    function createThumbnail(src, w, h) {
+    // ===================== 4. 解析 EXIF 信息 =====================
+    function parseExif(imgUrl) {
       return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
         img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
+          const exif = piexif.load(img.src)
+          const ifd0 = exif['0th'] || {}
+          const exifInfo = exif.Exif || {}
+          const gps = exif.GPS || {}
 
-          // 等比居中裁剪
-          const scale = Math.max(w / img.width, h / img.height);
-          const nw = img.width * scale;
-          const nh = img.height * scale;
-          const x = (w - nw) / 2;
-          const y = (h - nh) / 2;
+          // 拍摄时间
+          const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
+          // 相机型号
+          const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
+          // 曝光参数
+          const exp = []
+          if (exifInfo[piexif.ExifIFD.FNumber]) {
+            exp.push(`光圈 f/${piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])}`)
+          }
+          if (exifInfo[piexif.ExifIFD.ExposureTime]) {
+            exp.push(`快门 1/${Math.round(1 / piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime]))}s`)
+          }
+          const expStr = exp.join(' ') || '暂无'
+          // GPS 坐标
+          let gpsStr = '暂无'
+          if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
+            const lat = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLatitude])
+            const lon = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLongitude])
+            gpsStr = `纬度:${lat.toFixed(6)} 经度:${lon.toFixed(6)}`
+          }
 
-          ctx.drawImage(img, x, y, nw, nh);
-          resolve(canvas);
-        };
-        img.src = src;
-      });
+          resolve({ takeTime, camera, expStr, gpsStr })
+        }
+        img.src = imgUrl
+      })
     }
 
-    // 4. 加载图片详情 + EXIF 解析
-    async function loadPhotoDetail(album, photo) {
-      const imgSrc = `${ALBUM_BASE}${album}/${photo}`;
-      const mainImg = document.getElementById('mainImage');
-      const linkInput = document.getElementById('imgLink');
-      const exifDom = document.getElementById('exifInfo');
+    // ===================== 5. 图片预览 缩放+拖拽 =====================
+    let scale = 1
+    let isDrag = false
+    let startX, startY, moveX, moveY
 
-      mainImg.src = imgSrc;
-      linkInput.value = location.origin + imgSrc;
-      exifDom.innerHTML = '解析 EXIF 信息中...';
+    function initDragZoom() {
+      scale = 1
+      previewImg.style.transform = `scale(${scale}) translate(0,0)`
+      // 滚轮缩放
+      previewImg.addEventListener('wheel', (e) => {
+        e.preventDefault()
+        scale += e.deltaY > 0 ? -0.1 : 0.1
+        scale = Math.max(0.5, Math.min(scale, 3))
+        previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
+      })
+      // 拖拽
+      previewImg.addEventListener('mousedown', (e) => {
+        isDrag = true
+        startX = e.clientX - moveX
+        startY = e.clientY - moveY
+      })
+      document.addEventListener('mousemove', (e) => {
+        if (!isDrag) return
+        moveX = e.clientX - startX
+        moveY = e.clientY - startY
+        previewImg.style.transform = `scale(${scale}) translate(${moveX}px, ${moveY}px)`
+      })
+      document.addEventListener('mouseup', () => isDrag = false)
+    }
+
+    // ===================== 6. 加载图片详情 =====================
+    async function loadPhotoDetail(albumName, photoName) {
+      const fullUrl = `${ALBUM_BASE}${albumName}/${photoName}`
+      imgLink.value = location.origin + fullUrl
+      previewImg.src = fullUrl
+      initDragZoom()
 
       // 解析 EXIF
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const exif = piexif.load(img.src);
-        const ifd0 = exif['0th'] || {};
-        const exifIfd = exif['Exif'] || {};
-        const gps = exif['GPS'] || {};
-
-        let html = '';
-        // 拍摄时间
-        if (exifIfd[piexif.ExifIFD.DateTimeOriginal]) {
-          html += `<p>拍摄时间：${exifIfd[piexif.ExifIFD.DateTimeOriginal]}</p>`;
-        }
-        // 相机型号
-        if (ifd0[piexif.ImageIFD.Model]) {
-          html += `<p>相机型号：${ifd0[piexif.ImageIFD.Model]}</p>`;
-        }
-        // 曝光、光圈、ISO
-        if (exifIfd[piexif.ExifIFD.ExposureTime]) {
-          html += `<p>曝光时间：${piexif.helpers.exposureTime(exifIfd[piexif.ExifIFD.ExposureTime])}s</p>`;
-        }
-        if (exifIfd[piexif.ExifIFD.FNumber]) {
-          html += `<p>光圈：f/${piexif.helpers.fnumber(exifIfd[piexif.ExifIFD.FNumber])}</p>`;
-        }
-        if (exifIfd[piexif.ExifIFD.ISOSpeedRatings]) {
-          html += `<p>ISO：${exifIfd[piexif.ExifIFD.ISOSpeedRatings]}</p>`;
-        }
-        // GPS 坐标
-        if (Object.keys(gps).length > 0) {
-          const lat = piexif.helpers.gpsToDecimal(gps[piexif.GPSIFD.GPSLatitude], gps[piexif.GPSIFD.GPSLatitudeRef]);
-          const lon = piexif.helpers.gpsToDecimal(gps[piexif.GPSIFD.GPSLongitude], gps[piexif.GPSIFD.GPSLongitudeRef]);
-          html += `<p>GPS 坐标：纬度 ${lat}，经度 ${lon}</p>`;
-        }
-
-        exifDom.innerHTML = html || '<p>无 EXIF 信息</p>';
-      };
-      img.src = imgSrc;
+      const exifData = await parseExif(fullUrl)
+      document.getElementById('exifTime').innerText = exifData.takeTime
+      document.getElementById('exifCamera').innerText = exifData.camera
+      document.getElementById('exifParam').innerText = exifData.expStr
+      document.getElementById('exifGps').innerText = exifData.gpsStr
     }
 
-    // 5. 复制外链
-    async function copyLink() {
-      const input = document.getElementById('imgLink');
-      const tip = document.getElementById('copyTip');
-      try {
-        await navigator.clipboard.writeText(input.value);
-        tip.innerText = '复制成功！';
-        setTimeout(() => tip.innerText = '', 2000);
-      } catch (e) {
-        tip.innerText = '复制失败，请手动复制';
+    // ===================== 7. 扫描相册目录 (Vite glob) =====================
+    async function scanAlbums() {
+      // 动态导入 public/albums 下所有图片
+      const imageModules = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', {
+        eager: false,
+        import: 'default'
+      })
+
+      const albumMap = new Map()
+      const regAlbum = /^(\d{4}-\d{2}-\d{2})-(.+)$/ // 匹配 YYYY-MM-dd-名称
+
+      // 遍历所有图片路径
+      for (const path in imageModules) {
+        // 路径示例：/public/albums/2024-05-20-vacation/1.jpg
+        const pathArr = path.replace('/public/albums/', '').split('/')
+        const folderName = pathArr[0]
+        const fileName = pathArr[1]
+
+        const match = folderName.match(regAlbum)
+        if (!match) continue // 跳过不符合命名规则的文件夹
+
+        const [_, date, name] = match
+        const albumKey = folderName
+        if (!albumMap.has(albumKey)) {
+          albumMap.set(albumKey, {
+            date,
+            name,
+            files: []
+          })
+        }
+        albumMap.get(albumKey).files.push(fileName)
+      }
+
+      // 渲染相册列表
+      albumList.innerHTML = ''
+      for (const [folderName, info] of albumMap) {
+        const firstImg = `${ALBUM_BASE}${folderName}/${info.files[0]}`
+        const item = document.createElement('div')
+        item.className = 'album-item'
+
+        // 生成缩略图
+        createThumbnail(firstImg, (thumbUrl) => {
+          item.innerHTML = `
+            <img class="album-thumb" src="${thumbUrl}" alt="${info.name}">
+            <div class="album-name">${info.date} ${info.name}</div>
+          `
+        })
+
+        // 点击进入相册第一张图
+        item.addEventListener('click', () => {
+          location.hash = `album=${folderName}&photo=${info.files[0]}`
+        })
+        albumList.appendChild(item)
       }
     }
 
-    // 6. 返回列表页
-    window.goBack = () => {
-      window.location.hash = '';
-    };
+    // ===================== 8. 应用入口 =====================
+    function initApp() {
+      scanAlbums()
+      switchPage(parseHash())
+    }
+
+    // 配置存在则直接初始化
+    if (globalConfig) initApp()
   </script>
 </body>
 </html>

@@ -5,372 +5,299 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>相册管理后台</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui; }
-    body { padding: 20px; background: #f8f9fa; }
-    .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
-    h2 { margin-bottom: 20px; color: #222; }
-    .block { margin: 20px 0; padding: 16px; border: 1px solid #eee; border-radius: 6px; }
-    input, button, select { padding: 8px 12px; margin: 6px 4px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-    button { background: #2563eb; color: #fff; border: none; cursor: pointer; }
-    button.danger { background: #ef4444; }
-    button.success { background: #10b981; }
-    .hidden { display: none; }
-    .qrcode-box { margin: 10px 0; }
-    .tip { color: #666; font-size: 13px; margin: 8px 0; }
-    .file-list { margin-top: 15px; max-height: 400px; overflow-y: auto; }
-    .file-item { padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-    .alert { padding: 10px; background: #fef2f2; color: #dc2626; border-radius: 4px; margin: 10px 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1, h2 { margin-bottom: 20px; color: #333; }
+    .section { margin: 30px 0; padding-top: 20px; border-top: 1px solid #eee; }
+
+    /* 配置弹窗 */
+    .config-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center; z-index: 9999;
+    }
+    .modal-box { background: #fff; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; }
+    input { width: 100%; padding: 10px; margin: 8px 0 16px; border: 1px solid #ddd; border-radius: 4px; }
+    button { padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; margin: 4px; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-success { background: #10b981; color: #fff; }
+
+    /* 2FA 区域 */
+    #qrcode { margin: 16px 0; }
+    .secret-key { background: #f1f1f1; padding: 10px; border-radius: 4px; word-break: break-all; }
+
+    /* 文件管理 */
+    .file-list { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; }
+    .file-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .file-item:last-child { border-bottom: none; }
+    .operate-area { display: flex; gap: 8px; }
   </style>
-  <!-- 2FA 二维码生成 + TOTP 验证 CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/totp-js@1.0.0/dist/totp.min.js"></script>
 </head>
 <body>
-  <div class="container">
-    <h2>相册管理后台</h2>
-    <a href="index.html">← 返回首页</a>
-
-    <!-- 全局提示 -->
-    <div id="alertBox" class="alert hidden"></div>
-
-    <!-- 第一步：初始化配置（GitHub Token + 仓库信息 + 2FA） -->
-    <div id="configPanel" class="block">
-      <h3>首次使用请完成配置（配置本地存储，仅当前浏览器生效）</h3>
-      <p class="tip">1. 填写 GitHub 仓库信息 + 个人 Token；2. 绑定 2FA 二次验证</p>
-      <div>
-        <label>GitHub 用户名：</label>
-        <input type="text" id="ghOwner" placeholder="例如：your-name">
-      </div>
-      <div>
-        <label>GitHub 仓库名：</label>
-        <input type="text" id="ghRepo" placeholder="例如：photo-album">
-      </div>
-      <div>
-        <label>GitHub Token：</label>
-        <input type="text" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" style="width: 400px;">
-      </div>
-      <div class="block">
-        <h4>2FA 二次验证绑定</h4>
-        <p class="tip">请使用谷歌验证器/微软验证器扫描二维码，输入6位动态验证码完成绑定</p>
-        <div class="qrcode-box" id="qrcode"></div>
-        <div>
-          <label>动态验证码：</label>
-          <input type="text" id="totpCode" placeholder="6位数字">
-          <button onclick="bind2FA()">确认绑定并保存配置</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 第二步：管理主面板（配置+验证通过后显示） -->
-    <div id="mainPanel" class="hidden">
-      <!-- 相册文件夹管理 -->
-      <div class="block">
-        <h3>相册文件夹管理（格式：YYYY-MM-dd-相册名）</h3>
-        <div>
-          <input type="text" id="newAlbumName" placeholder="2024-05-20-周末出游">
-          <button onclick="createAlbum()">新建相册</button>
-        </div>
-        <div class="file-list" id="albumList"></div>
-      </div>
-
-      <!-- 图片上传管理 -->
-      <div class="block">
-        <h3>图片上传至相册</h3>
-        <div>
-          <select id="albumSelect"></select>
-          <input type="file" id="imgFile" accept="image/jpeg,image/png,image/webp" multiple>
-          <button onclick="uploadImage()" class="success">上传图片</button>
-        </div>
-        <p class="tip">支持 jpg / png / webp 格式</p>
-      </div>
-
-      <!-- 相册内文件列表 -->
-      <div class="block">
-        <h3>当前相册文件管理</h3>
-        <select id="fileAlbumSelect" onchange="loadAlbumFiles()"></select>
-        <div class="file-list" id="fileList"></div>
-      </div>
+  <!-- 全局配置弹窗 -->
+  <div id="configModal" class="config-modal">
+    <div class="modal-box">
+      <h3>系统初始化配置</h3>
+      <p>EdgeOne + GitHub 部署必须配置以下信息</p>
+      <p>GitHub 仓库地址：</p>
+      <input type="text" id="repoUrl" placeholder="https://github.com/用户名/仓库名">
+      <p>GitHub Token（repo 权限）：</p>
+      <input type="text" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
+      <button class="btn-primary" id="saveConfig">保存配置</button>
     </div>
   </div>
 
+  <div class="container">
+    <h1>相册后台管理系统</h1>
+
+    <!-- 2FA 登录/绑定区域 -->
+    <div class="section">
+      <h2>🔐 双重认证 (2FA)</h2>
+      <div id="2faBindArea">
+        <p>请先绑定两步验证，保障后台安全</p>
+        <button class="btn-primary" id="gen2fa">生成2FA密钥 & 二维码</button>
+        <div id="qrcode"></div>
+        <p>密钥：</p>
+        <div class="secret-key" id="secretKey"></div>
+        <p>请使用谷歌验证器/微软验证器扫码，输入6位验证码完成绑定</p>
+        <input type="text" id="2faCode" placeholder="输入6位验证码">
+        <button class="btn-success" id="verify2fa">验证并登录</button>
+      </div>
+
+      <div id="loginArea" style="display: none;">
+        <p>请输入2FA验证码登录管理后台</p>
+        <input type="text" id="loginCode" placeholder="6位验证码">
+        <button class="btn-primary" id="loginBtn">登录</button>
+      </div>
+    </div>
+
+    <!-- GitHub 文件管理（相册目录） -->
+    <div class="section" id="fileManageArea" style="display: none;">
+      <h2>📁 相册文件管理（GitHub 仓库直连）</h2>
+      <p>当前目录：<code>public/albums/</code></p>
+      <div>
+        <input type="text" id="newFolder" placeholder="新建相册文件夹（格式：YYYY-MM-dd-名称）">
+        <button class="btn-primary" id="addFolder">新建文件夹</button>
+      </div>
+      <div style="margin: 16px 0;">
+        <input type="file" id="uploadFile" multiple accept="image/*">
+        <button class="btn-success" id="uploadBtn">上传图片</button>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+  </div>
+
+  <!-- CDN 引入 2FA、二维码库 -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/otpauth@9.2.2/dist/otpauth.umd.min.js"></script>
+
   <script>
-    // ========== 全局常量 & 本地存储 Key ==========
-    const STORAGE_KEY = 'album_admin_config';
-    const ALBUM_ROOT = 'public/albums/';
-    let config = {
-      owner: '',
-      repo: '',
-      token: '',
-      totpSecret: '',
-      isBind2FA: false
-    };
-    let totpSecret = '';
+    const STORAGE_CONFIG = 'album_global_config'
+    const STORAGE_2FA = 'album_2fa_secret'
+    let globalConfig = null
+    let otpSecret = null
+    const API_BASE = 'https://api.github.com'
 
-    // ========== 初始化 ==========
-    window.onload = initAdmin;
+    // ========== 1. 全局配置检测 ==========
+    const configModal = document.getElementById('configModal')
+    const saveConfig = document.getElementById('saveConfig')
+    const repoUrlInput = document.getElementById('repoUrl')
+    const tokenInput = document.getElementById('githubToken')
 
-    function initAdmin() {
-      // 读取本地配置
-      const local = localStorage.getItem(STORAGE_KEY);
-      if (local) {
-        config = JSON.parse(local);
-        // 校验 2FA
-        if (config.isBind2FA && config.totpSecret) {
-          showMainPanel();
-          refreshAllData();
-          return;
-        }
+    function checkConfig() {
+      globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
+      if (!globalConfig) {
+        configModal.style.display = 'flex'
+        return false
       }
-      // 无配置 / 未绑定2FA：显示配置面板 + 生成2FA密钥二维码
-      showConfigPanel();
-      generate2FA();
+      configModal.style.display = 'none'
+      return true
     }
 
-    // 显示提示信息
-    function showAlert(msg) {
-      const box = document.getElementById('alertBox');
-      box.innerText = msg;
-      box.classList.remove('hidden');
-      setTimeout(() => box.classList.add('hidden'), 3000);
+    saveConfig.addEventListener('click', () => {
+      const repo = repoUrlInput.value.trim()
+      const token = tokenInput.value.trim()
+      if (!repo || !token) return alert('仓库地址和Token不能为空')
+      localStorage.setItem(STORAGE_CONFIG, JSON.stringify({ repoUrl: repo, githubToken: token }))
+      location.reload()
+    })
+
+    // 解析 GitHub 用户名/仓库名
+    function parseRepo() {
+      const url = globalConfig.repoUrl
+      const arr = url.replace('https://github.com/', '').split('/')
+      return { owner: arr[0], repo: arr[1] }
     }
 
-    // 切换面板
-    function showConfigPanel() {
-      document.getElementById('configPanel').classList.remove('hidden');
-      document.getElementById('mainPanel').classList.add('hidden');
-    }
-    function showMainPanel() {
-      document.getElementById('configPanel').classList.add('hidden');
-      document.getElementById('mainPanel').classList.remove('hidden');
+    // ========== 2. 2FA 双重认证逻辑 ==========
+    const twofaBindArea = document.getElementById('2faBindArea')
+    const loginArea = document.getElementById('loginArea')
+    const fileManageArea = document.getElementById('fileManageArea')
+    const gen2faBtn = document.getElementById('gen2fa')
+    const verify2faBtn = document.getElementById('verify2fa')
+    const loginBtn = document.getElementById('loginBtn')
+    const secretKeyDom = document.getElementById('secretKey')
+    const qrCodeDom = document.getElementById('qrcode')
+
+    // 初始化2FA状态
+    function init2FA() {
+      otpSecret = localStorage.getItem(STORAGE_2FA)
+      if (otpSecret) {
+        twofaBindArea.style.display = 'none'
+        loginArea.style.display = 'block'
+      } else {
+        twofaBindArea.style.display = 'block'
+        loginArea.style.display = 'none'
+      }
     }
 
-    // ========== 2FA 二次验证 ==========
-    // 生成随机密钥 + 二维码
-    function generate2FA() {
-      // 生成 16 位随机密钥
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-      totpSecret = '';
-      for(let i=0;i<16;i++) totpSecret += chars[Math.floor(Math.random()*chars.length)];
-      // TOTP 链接
-      const issuer = 'EdgeOne相册';
-      const account = 'admin';
-      const otpUrl = `otpauth://totp/${issuer}:${account}?secret=${totpSecret}&issuer=${issuer}`;
+    // 生成2FA密钥+二维码
+    gen2faBtn.addEventListener('click', () => {
+      const secret = new Otpauth.Secret(16)
+      otpSecret = secret.base32
+      secretKeyDom.innerText = otpSecret
+
+      // 生成OTP链接
+      const totp = new Otpauth.TOTP({
+        issuer: 'EdgeOne相册系统',
+        label: '相册后台',
+        secret: secret
+      })
+      const otpUrl = totp.toString()
+
       // 生成二维码
-      QRCode.toCanvas(document.getElementById('qrcode'), otpUrl, { width: 200 });
-    }
+      QRCode.toCanvas(qrCodeDom, otpUrl, { width: 200 })
+    })
 
-    // 绑定 2FA + 保存全部配置
-    async function bind2FA() {
-      const owner = document.getElementById('ghOwner').value.trim();
-      const repo = document.getElementById('ghRepo').value.trim();
-      const token = document.getElementById('ghToken').value.trim();
-      const code = document.getElementById('totpCode').value.trim();
-
-      if(!owner || !repo || !token || !code) {
-        showAlert('请填写完整信息并输入动态验证码');
-        return;
+    // 验证并保存密钥
+    verify2faBtn.addEventListener('click', () => {
+      const code = document.getElementById('2faCode').value.trim()
+      if (!otpSecret || code.length !== 6) return alert('请先生成密钥并输入6位验证码')
+      const totp = new Otpauth.TOTP({ secret: otpSecret })
+      if (totp.validate({ token: code, window: 1 })) {
+        localStorage.setItem(STORAGE_2FA, otpSecret)
+        alert('绑定成功，请使用验证码登录')
+        location.reload()
+      } else {
+        alert('验证码错误，请重试')
       }
+    })
 
-      // 校验 TOTP 验证码
-      const valid = totp.verify(totpSecret, code);
-      if(!valid) {
-        showAlert('验证码错误，请重新扫描二维码并输入');
-        return;
+    // 登录验证
+    loginBtn.addEventListener('click', () => {
+      const code = document.getElementById('loginCode').value.trim()
+      const totp = new Otpauth.TOTP({ secret: otpSecret })
+      if (totp.validate({ token: code, window: 1 })) {
+        loginArea.style.display = 'none'
+        fileManageArea.style.display = 'block'
+        loadFileList() // 加载仓库文件列表
+      } else {
+        alert('验证码错误')
       }
+    })
 
-      // 保存配置到本地
-      config = {
-        owner, repo, token,
-        totpSecret,
-        isBind2FA: true
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-      showAlert('配置绑定成功！');
-      showMainPanel();
-      await refreshAllData();
-    }
-
-    // ========== GitHub API 通用请求封装 ==========
-    async function ghApi(path, method = 'GET', body = null) {
+    // ========== 3. GitHub API 工具函数 ==========
+    async function githubApi(path, method = 'GET', body = null) {
+      const { owner, repo } = parseRepo()
       const headers = {
-        'Authorization': `token ${config.token}`,
+        'Authorization': `token ${globalConfig.githubToken}`,
         'Accept': 'application/vnd.github.v3+json'
-      };
-      const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${path}`;
-      const opts = { method, headers };
-      if(body) opts.body = JSON.stringify(body);
-
-      const res = await fetch(url, opts);
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.message || '请求失败');
-      return data;
+      }
+      const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+        method, headers, body: body ? JSON.stringify(body) : null
+      })
+      if (!res.ok) throw new Error('GitHub 请求失败')
+      return res.json()
     }
 
-    // ========== 相册文件夹操作 ==========
-    // 刷新相册列表
-    async function loadAlbumList() {
+    // ========== 4. 文件管理：增删改查 ==========
+    const fileList = document.getElementById('fileList')
+    const addFolderBtn = document.getElementById('addFolder')
+    const newFolderInput = document.getElementById('newFolder')
+    const uploadBtn = document.getElementById('uploadBtn')
+    const uploadFile = document.getElementById('uploadFile')
+    const BASE_PATH = 'public/albums'
+
+    // 加载文件列表
+    async function loadFileList() {
       try {
-        const listDom = document.getElementById('albumList');
-        const select1 = document.getElementById('albumSelect');
-        const select2 = document.getElementById('fileAlbumSelect');
-        listDom.innerHTML = '加载中...';
-        select1.innerHTML = '';
-        select2.innerHTML = '';
-
-        const data = await ghApi(ALBUM_ROOT);
-        // 筛选 YYYY-MM-dd- 格式文件夹
-        const albums = data.filter(item =>
-          item.type === 'dir' && /^\d{4}-\d{2}-\d{2}-/.test(item.name)
-        );
-
-        listDom.innerHTML = '';
-        albums.forEach(album => {
-          const item = document.createElement('div');
-          item.className = 'file-item';
-          item.innerHTML = `
-            <span>${album.name}</span>
-            <div>
-              <button class="danger" onclick="deleteAlbum('${album.name}','${album.sha}')">删除</button>
+        const list = await githubApi(BASE_PATH)
+        fileList.innerHTML = ''
+        list.forEach(item => {
+          const div = document.createElement('div')
+          div.className = 'file-item'
+          div.innerHTML = `
+            <span>${item.name} (${item.type === 'dir' ? '文件夹' : '文件'})</span>
+            <div class="operate-area">
+              <button class="btn-danger del-btn" data-path="${item.path}" data-type="${item.type}">删除</button>
             </div>
-          `;
-          listDom.appendChild(item);
-
-          // 下拉选择框
-          const opt1 = document.createElement('option');
-          opt1.value = album.name;
-          opt1.innerText = album.name;
-          select1.appendChild(opt1);
-
-          const opt2 = document.createElement('option');
-          opt2.value = album.name;
-          opt2.innerText = album.name;
-          select2.appendChild(opt2);
-        });
+          `
+          fileList.appendChild(div)
+        })
+        // 绑定删除事件
+        document.querySelectorAll('.del-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const path = btn.dataset.path
+            const type = btn.dataset.type
+            if (!confirm(`确定删除 ${path}？`)) return
+            const res = await githubApi(path, 'DELETE', { sha: btn.dataset.sha || '' })
+            loadFileList()
+          })
+        })
       } catch (e) {
-        showAlert('加载相册失败：' + e.message);
+        fileList.innerHTML = '<p>加载文件失败，请检查Token和仓库权限</p>'
+        console.error(e)
       }
     }
 
-    // 新建相册文件夹
-    async function createAlbum() {
-      const name = document.getElementById('newAlbumName').value.trim();
-      if(!/^\d{4}-\d{2}-\d{2}-.+$/.test(name)) {
-        showAlert('文件夹格式必须为：YYYY-MM-dd-相册名');
-        return;
+    // 新建文件夹（GitHub 用空文件模拟文件夹）
+    addFolderBtn.addEventListener('click', async () => {
+      const folderName = newFolderInput.value.trim()
+      if (!/^\d{4}-\d{2}-\d{2}-.+$/.test(folderName)) {
+        return alert('文件夹必须以 YYYY-MM-dd- 开头')
       }
+      const path = `${BASE_PATH}/${folderName}/.gitkeep`
       try {
-        const path = ALBUM_ROOT + name + '/.keep';
-        // 创建空文件占位（GitHub 不允许空目录）
-        await ghApi(path, 'PUT', {
-          message: `新建相册 ${name}`,
+        await githubApi(path, 'PUT', {
+          message: `新建相册文件夹 ${folderName}`,
           content: ''
-        });
-        showAlert('相册创建成功');
-        document.getElementById('newAlbumName').value = '';
-        await loadAlbumList();
+        })
+        newFolderInput.value = ''
+        loadFileList()
+        alert('创建成功')
       } catch (e) {
-        showAlert('创建失败：' + e.message);
+        alert('创建失败')
       }
-    }
-
-    // 删除相册文件夹
-    async function deleteAlbum(name, sha) {
-      if(!confirm(`确定删除相册 ${name}？内部图片将全部丢失！`)) return;
-      try {
-        // 先递归删除目录下所有文件（简化：直接删除占位文件，再刷新）
-        await ghApi(ALBUM_ROOT + name + '/.keep', 'DELETE', {
-          message: `删除相册 ${name}`,
-          sha
-        });
-        showAlert('相册已删除');
-        await loadAlbumList();
-      } catch (e) {
-        showAlert('删除失败：' + e.message);
-      }
-    }
-
-    // ========== 图片上传 & 文件管理 ==========
-    // 加载单个相册内文件
-    async function loadAlbumFiles() {
-      const album = document.getElementById('fileAlbumSelect').value;
-      if(!album) return;
-      try {
-        const listDom = document.getElementById('fileList');
-        listDom.innerHTML = '加载中...';
-        const data = await ghApi(ALBUM_ROOT + album);
-        const imgs = data.filter(item => /\.(jpg|jpeg|png|webp)$/i.test(item.name));
-
-        listDom.innerHTML = '';
-        imgs.forEach(file => {
-          const item = document.createElement('div');
-          item.className = 'file-item';
-          item.innerHTML = `
-            <span>${file.name}</span>
-            <button class="danger" onclick="deleteFile('${album}','${file.name}','${file.sha}')">删除</button>
-          `;
-          listDom.appendChild(item);
-        });
-      } catch (e) {
-        showAlert('加载文件失败：' + e.message);
-      }
-    }
+    })
 
     // 上传图片
-    async function uploadImage() {
-      const album = document.getElementById('albumSelect').value;
-      const files = document.getElementById('imgFile').files;
-      if(!album || files.length === 0) {
-        showAlert('请选择相册和图片文件');
-        return;
-      }
-      try {
-        for(const file of files) {
-          // 文件转 base64
-          const base64 = await fileToBase64(file);
-          const path = ALBUM_ROOT + album + '/' + file.name;
-          await ghApi(path, 'PUT', {
+    uploadBtn.addEventListener('click', async () => {
+      const files = uploadFile.files
+      if (files.length === 0) return alert('请选择图片')
+      const targetFolder = prompt('请输入目标相册文件夹名（YYYY-MM-dd-xxx）')
+      if (!targetFolder) return
+      for (const file of files) {
+        const reader = new FileReader()
+        reader.readAsDataURL(file)
+        reader.onload = async () => {
+          const base64 = reader.result.split(',')[1]
+          const path = `${BASE_PATH}/${targetFolder}/${file.name}`
+          await githubApi(path, 'PUT', {
             message: `上传图片 ${file.name}`,
-            content: base64.split(',')[1]
-          });
+            content: base64
+          })
         }
-        showAlert('图片上传完成');
-        document.getElementById('imgFile').value = '';
-        await loadAlbumFiles();
-      } catch (e) {
-        showAlert('上传失败：' + e.message);
       }
-    }
+      setTimeout(loadFileList, 1000)
+      alert('上传请求已发送')
+    })
 
-    // 删除单张图片
-    async function deleteFile(album, filename, sha) {
-      if(!confirm(`确定删除图片 ${filename}？`)) return;
-      try {
-        const path = ALBUM_ROOT + album + '/' + filename;
-        await ghApi(path, 'DELETE', {
-          message: `删除图片 ${filename}`,
-          sha
-        });
-        showAlert('图片已删除');
-        await loadAlbumFiles();
-      } catch (e) {
-        showAlert('删除失败：' + e.message);
+    // ========== 应用入口 ==========
+    window.onload = () => {
+      if (checkConfig()) {
+        init2FA()
       }
-    }
-
-    // 文件转 Base64
-    function fileToBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
-
-    // 刷新全部数据
-    async function refreshAllData() {
-      await loadAlbumList();
-      await loadAlbumFiles();
     }
   </script>
 </body>
