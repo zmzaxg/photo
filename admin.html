@@ -7,11 +7,10 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
-    .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     h1, h2 { margin-bottom: 20px; color: #333; }
     .section { margin: 30px 0; padding-top: 20px; border-top: 1px solid #eee; }
 
-    /* 配置弹窗 */
     .config-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.7);
       display: flex; align-items: center; justify-content: center; z-index: 9999;
@@ -23,20 +22,8 @@
     .btn-danger { background: #ef4444; color: #fff; }
     .btn-success { background: #10b981; color: #fff; }
 
-    /* 2FA 区域 */
-    #qrcode { 
-      margin: 16px 0; 
-      width: 200px; 
-      height: 200px; 
-      border: 1px solid #eee;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+    #qrcode { margin: 16px 0; width: 200px; height: 200px; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
     .secret-key { background: #f1f1f1; padding: 10px; border-radius: 4px; word-break: break-all; }
-    .debug-info { font-size: 12px; color: #666; margin-top: 10px; }
-
-    /* 文件管理 */
     .file-list { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; }
     .file-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
     .file-item:last-child { border-bottom: none; }
@@ -44,14 +31,11 @@
   </style>
 </head>
 <body>
-  <!-- 全局配置弹窗 -->
   <div id="configModal" class="config-modal">
     <div class="modal-box">
       <h3>系统初始化配置</h3>
-      <p>EdgeOne + GitHub 部署必须配置以下信息</p>
-      <p>GitHub 仓库地址：</p>
+      <p>请填写 GitHub 仓库信息：</p>
       <input type="text" id="repoUrl" placeholder="https://github.com/用户名/仓库名">
-      <p>GitHub Token（repo 权限）：</p>
       <input type="text" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
       <button class="btn-primary" id="saveConfig">保存配置</button>
     </div>
@@ -60,33 +44,25 @@
   <div class="container">
     <h1>相册后台管理系统</h1>
 
-    <!-- 2FA 登录/绑定区域 -->
     <div class="section">
       <h2>🔐 双重认证 (2FA)</h2>
       <div id="2faBindArea">
-        <p>请先绑定两步验证，保障后台安全</p>
-        <button class="btn-primary" id="gen2fa">生成2FA密钥 & 二维码</button>
+        <button class="btn-primary" id="gen2fa">生成2FA密钥</button>
         <div id="qrcode"></div>
         <p>密钥：</p>
         <div class="secret-key" id="secretKey"></div>
-        <p>请使用谷歌验证器/微软验证器扫码，输入6位验证码完成绑定</p>
         <input type="text" id="2faCode" placeholder="输入6位验证码">
-        <button class="btn-success" id="verify2fa">验证并登录</button>
-        <div class="debug-info" id="debugInfo"></div>
+        <button class="btn-success" id="verify2fa">绑定并登录</button>
       </div>
 
       <div id="loginArea" style="display: none;">
-        <p>请输入2FA验证码登录管理后台</p>
-        <input type="text" id="loginCode" placeholder="6位验证码">
+        <input type="text" id="loginCode" placeholder="输入6位验证码">
         <button class="btn-primary" id="loginBtn">登录</button>
-        <div class="debug-info" id="loginDebugInfo"></div>
       </div>
     </div>
 
-    <!-- GitHub 文件管理（相册目录） -->
     <div class="section" id="fileManageArea" style="display: none;">
-      <h2>📁 相册文件管理（GitHub 仓库直连）</h2>
-      <p>当前目录：<code>public/albums/</code></p>
+      <h2>📁 相册文件管理</h2>
       <div>
         <input type="text" id="newFolder" placeholder="新建相册文件夹（格式：YYYY-MM-dd-名称）">
         <button class="btn-primary" id="addFolder">新建文件夹</button>
@@ -99,7 +75,6 @@
     </div>
   </div>
 
-  <!-- 仅保留 QRCode 库，移除所有 2FA 第三方库 -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
   <script>
@@ -109,11 +84,16 @@
     let otpSecret = null
     const API_BASE = 'https://api.github.com'
 
-    // ========== 1. 全局配置检测 ==========
+    // 1. 配置检测
     const configModal = document.getElementById('configModal')
     const saveConfig = document.getElementById('saveConfig')
-    const repoUrlInput = document.getElementById('repoUrl')
-    const tokenInput = document.getElementById('githubToken')
+    saveConfig.addEventListener('click', () => {
+      const repo = document.getElementById('repoUrl').value.trim()
+      const token = document.getElementById('githubToken').value.trim()
+      if (!repo || !token) return alert('请填写完整信息')
+      localStorage.setItem(STORAGE_CONFIG, JSON.stringify({ repoUrl: repo, githubToken: token }))
+      location.reload()
+    })
 
     function checkConfig() {
       globalConfig = JSON.parse(localStorage.getItem(STORAGE_CONFIG))
@@ -125,23 +105,13 @@
       return true
     }
 
-    saveConfig.addEventListener('click', () => {
-      const repo = repoUrlInput.value.trim()
-      const token = tokenInput.value.trim()
-      if (!repo || !token) return alert('仓库地址和Token不能为空')
-      localStorage.setItem(STORAGE_CONFIG, JSON.stringify({ repoUrl: repo, githubToken: token }))
-      location.reload()
-    })
-
-    // 解析 GitHub 用户名/仓库名
     function parseRepo() {
       const url = globalConfig.repoUrl
       const arr = url.replace('https://github.com/', '').split('/')
       return { owner: arr[0], repo: arr[1] }
     }
 
-    // ========== 2. 纯原生实现 TOTP（无任何外部依赖） ==========
-    // 标准 Base32 解码（兼容 RFC4648）
+    // 2. 极简 TOTP 实现
     function base32Decode(encoded) {
       const base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
       encoded = encoded.toUpperCase().replace(/=+$/, '');
@@ -158,7 +128,6 @@
       return new Uint8Array(bytes);
     }
 
-    // 生成标准 16 位 Base32 密钥
     function generateSecret(length = 16) {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
       let secret = "";
@@ -168,63 +137,34 @@
       return secret;
     }
 
-    // 计算当前时间对应的 TOTP 验证码
-    async function calculateTOTP(secret, digits = 6, period = 30) {
+    async function verifyTOTP(secret, token) {
       const key = base32Decode(secret);
       const epoch = Math.floor(Date.now() / 1000);
-      const time = Math.floor(epoch / period);
-      const timeBytes = new Uint8Array(8);
-      for (let i = 0; i < 8; i++) {
-        timeBytes[7 - i] = (time >> (i * 8)) & 0xff;
-      }
-
-      const cryptoKey = await crypto.subtle.importKey(
-        "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
-      );
-      const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
-      const hmacResult = new Uint8Array(hmac);
-
-      const offset = hmacResult[hmacResult.length - 1] & 0xf;
-      const code =
-        ((hmacResult[offset] & 0x7f) << 24) |
-        ((hmacResult[offset + 1] & 0xff) << 16) |
-        ((hmacResult[offset + 2] & 0xff) << 8) |
-        (hmacResult[offset + 3] & 0xff);
-
-      return (code % Math.pow(10, digits)).toString().padStart(digits, '0');
-    }
-
-    // 验证 TOTP 验证码（支持前后各 1 个时间窗口，±30 秒）
-    async function verifyTOTP(secret, token, digits = 6, period = 30) {
-      const epoch = Math.floor(Date.now() / 1000);
-      for (let i = -1; i <= 1; i++) {
-        const time = Math.floor(epoch / period) + i;
-        const key = base32Decode(secret);
+      // 扩大时间窗口到 ±2 个周期（±60秒），解决时间偏差问题
+      for (let i = -2; i <= 2; i++) {
+        const time = Math.floor(epoch / 30) + i;
         const timeBytes = new Uint8Array(8);
         for (let j = 0; j < 8; j++) {
           timeBytes[7 - j] = (time >> (j * 8)) & 0xff;
         }
-
         const cryptoKey = await crypto.subtle.importKey(
           "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
         );
         const hmac = await crypto.subtle.sign("HMAC", cryptoKey, timeBytes);
         const hmacResult = new Uint8Array(hmac);
-
         const offset = hmacResult[hmacResult.length - 1] & 0xf;
         const code =
           ((hmacResult[offset] & 0x7f) << 24) |
           ((hmacResult[offset + 1] & 0xff) << 16) |
           ((hmacResult[offset + 2] & 0xff) << 8) |
           (hmacResult[offset + 3] & 0xff);
-
-        const totp = (code % Math.pow(10, digits)).toString().padStart(digits, '0');
+        const totp = (code % 1000000).toString().padStart(6, '0');
         if (totp === token) return true;
       }
       return false;
     }
 
-    // ========== 3. 2FA 绑定/登录逻辑 ==========
+    // 3. 2FA 逻辑
     const twofaBindArea = document.getElementById('2faBindArea')
     const loginArea = document.getElementById('loginArea')
     const fileManageArea = document.getElementById('fileManageArea')
@@ -233,10 +173,7 @@
     const loginBtn = document.getElementById('loginBtn')
     const secretKeyDom = document.getElementById('secretKey')
     const qrCodeDom = document.getElementById('qrcode')
-    const debugInfo = document.getElementById('debugInfo')
-    const loginDebugInfo = document.getElementById('loginDebugInfo')
 
-    // 初始化2FA状态
     function init2FA() {
       otpSecret = localStorage.getItem(STORAGE_2FA)
       if (otpSecret) {
@@ -248,100 +185,59 @@
       }
     }
 
-    // 生成2FA密钥+二维码
     gen2faBtn.addEventListener('click', async () => {
-      try {
-        // 1. 生成标准 16 位 Base32 密钥
-        otpSecret = generateSecret(16)
-        secretKeyDom.innerText = otpSecret
-        console.log('生成的密钥:', otpSecret)
-
-        // 2. 生成标准 OTP 链接
-        const otpUrl = `otpauth://totp/EdgeOne相册系统:相册后台?secret=${otpSecret}&issuer=EdgeOne相册系统&algorithm=SHA1&digits=6&period=30`
-        console.log('OTP链接:', otpUrl)
-
-        // 3. 生成二维码
-        qrCodeDom.innerHTML = ''
-        const canvas = document.createElement('canvas')
-        await QRCode.toCanvas(canvas, otpUrl, { 
-          width: 200, 
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#ffffff'
-          }
-        })
-        qrCodeDom.appendChild(canvas)
-        console.log('二维码生成成功')
-
-        // 4. 显示当前服务器验证码，方便核对
-        const currentCode = await calculateTOTP(otpSecret)
-        debugInfo.innerText = `当前服务器验证码: ${currentCode} | 时间: ${new Date().toLocaleString()}`
-
-      } catch (err) {
-        console.error('生成失败:', err)
-        alert('生成失败，请刷新页面重试：' + err.message)
-      }
+      otpSecret = generateSecret(16)
+      secretKeyDom.innerText = otpSecret
+      const otpUrl = `otpauth://totp/EdgeOne相册后台?secret=${otpSecret}&issuer=EdgeOne相册系统`
+      qrCodeDom.innerHTML = ''
+      const canvas = document.createElement('canvas')
+      await QRCode.toCanvas(canvas, otpUrl, { width: 200 })
+      qrCodeDom.appendChild(canvas)
     })
 
-    // 验证并保存密钥
     verify2faBtn.addEventListener('click', async () => {
       const code = document.getElementById('2faCode').value.trim()
       if (!otpSecret || code.length !== 6) return alert('请先生成密钥并输入6位验证码')
-      const currentCode = await calculateTOTP(otpSecret)
       const isValid = await verifyTOTP(otpSecret, code)
-      debugInfo.innerText = `当前服务器验证码: ${currentCode} | 你输入的: ${code} | 验证结果: ${isValid ? '成功' : '失败'}`
-      
       if (isValid) {
         localStorage.setItem(STORAGE_2FA, otpSecret)
-        alert('绑定成功，请使用验证码登录')
+        alert('绑定成功！')
         location.reload()
       } else {
-        alert('验证码错误，请重试（请确保手机时间与服务器时间同步，或使用页面显示的当前验证码核对）')
+        alert('验证码错误，请重试（请确保手机时间与服务器时间同步）')
       }
     })
 
-    // 登录验证
     loginBtn.addEventListener('click', async () => {
       const code = document.getElementById('loginCode').value.trim()
-      const currentCode = await calculateTOTP(otpSecret)
-      loginDebugInfo.innerText = `当前服务器验证码: ${currentCode} | 你输入的: ${code}`
       const isValid = await verifyTOTP(otpSecret, code)
       if (isValid) {
         loginArea.style.display = 'none'
         fileManageArea.style.display = 'block'
         loadFileList()
       } else {
-        alert('验证码错误，请重试（请确保手机时间与服务器时间同步，或使用页面显示的当前验证码核对）')
+        alert('验证码错误')
       }
     })
 
-    // ========== 4. GitHub API 工具函数 ==========
+    // 4. GitHub 文件管理
     async function githubApi(path, method = 'GET', body = null) {
       const { owner, repo } = parseRepo()
       const headers = {
         'Authorization': `token ${globalConfig.githubToken}`,
         'Accept': 'application/vnd.github.v3+json'
       }
-      const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
         method, headers, body: body ? JSON.stringify(body) : null
       })
-      if (!res.ok) throw new Error('GitHub 请求失败')
+      if (!res.ok) throw new Error('请求失败')
       return res.json()
     }
 
-    // ========== 5. 文件管理：增删改查 ==========
-    const fileList = document.getElementById('fileList')
-    const addFolderBtn = document.getElementById('addFolder')
-    const newFolderInput = document.getElementById('newFolder')
-    const uploadBtn = document.getElementById('uploadBtn')
-    const uploadFile = document.getElementById('uploadFile')
-    const BASE_PATH = 'public/albums'
-
-    // 加载文件列表
     async function loadFileList() {
       try {
-        const list = await githubApi(BASE_PATH)
+        const list = await githubApi('public/albums')
+        const fileList = document.getElementById('fileList')
         fileList.innerHTML = ''
         list.forEach(item => {
           const div = document.createElement('div')
@@ -354,69 +250,41 @@
           `
           fileList.appendChild(div)
         })
-        // 绑定删除事件
         document.querySelectorAll('.del-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
-            const path = btn.dataset.path
-            const sha = btn.dataset.sha
-            if (!confirm(`确定删除 ${path}？`)) return
-            await githubApi(path, 'DELETE', { 
-              sha: sha,
-              message: `删除文件 ${path}`
-            })
+            if (!confirm('确定删除？')) return
+            await githubApi(btn.dataset.path, 'DELETE', { sha: btn.dataset.sha, message: '删除文件' })
             loadFileList()
           })
         })
       } catch (e) {
-        fileList.innerHTML = '<p>加载文件失败，请检查Token和仓库权限</p>'
         console.error(e)
       }
     }
 
-    // 新建文件夹（GitHub 用空文件模拟文件夹）
-    addFolderBtn.addEventListener('click', async () => {
-      const folderName = newFolderInput.value.trim()
-      if (!/^\d{4}-\d{2}-\d{2}-.+$/.test(folderName)) {
-        return alert('文件夹必须以 YYYY-MM-dd- 开头')
-      }
-      const path = `${BASE_PATH}/${folderName}/.gitkeep`
-      try {
-        await githubApi(path, 'PUT', {
-          message: `新建相册文件夹 ${folderName}`,
-          content: ''
-        })
-        newFolderInput.value = ''
-        loadFileList()
-        alert('创建成功')
-      } catch (e) {
-        alert('创建失败')
-        console.error(e)
-      }
+    document.getElementById('addFolder').addEventListener('click', async () => {
+      const name = document.getElementById('newFolder').value.trim()
+      if (!/^\d{4}-\d{2}-\d{2}-.+$/.test(name)) return alert('格式错误，需 YYYY-MM-dd-xxx')
+      await githubApi(`public/albums/${name}/.gitkeep`, 'PUT', { message: '新建相册', content: '' })
+      alert('创建成功')
+      loadFileList()
     })
 
-    // 上传图片
-    uploadBtn.addEventListener('click', async () => {
-      const files = uploadFile.files
-      if (files.length === 0) return alert('请选择图片')
-      const targetFolder = prompt('请输入目标相册文件夹名（YYYY-MM-dd-xxx）')
-      if (!targetFolder) return
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+      const files = document.getElementById('uploadFile').files
+      const folder = prompt('请输入目标相册文件夹名')
+      if (!folder) return
       for (const file of files) {
         const reader = new FileReader()
         reader.readAsDataURL(file)
         reader.onload = async () => {
           const base64 = reader.result.split(',')[1]
-          const path = `${BASE_PATH}/${targetFolder}/${file.name}`
-          await githubApi(path, 'PUT', {
-            message: `上传图片 ${file.name}`,
-            content: base64
-          })
+          await githubApi(`public/albums/${folder}/${file.name}`, 'PUT', { message: `上传 ${file.name}`, content: base64 })
         }
       }
-      setTimeout(loadFileList, 1000)
-      alert('上传请求已发送')
+      alert('上传中...')
     })
 
-    // ========== 应用入口 ==========
     window.onload = () => {
       if (checkConfig()) {
         init2FA()
