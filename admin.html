@@ -266,6 +266,7 @@
     <div id="treeView"></div>
   </div>
   <div class="main">
+    <!-- 面包屑区域：新增刷新按钮 -->
     <div class="breadcrumb-wrap">
       <button id="btnRefresh">🔄 刷新</button>
       <div class="breadcrumb" id="breadcrumb">
@@ -372,11 +373,9 @@ function parseRepo() {
   return { owner: arr[0], repo: arr[1] }
 }
 
-// 强制无缓存API请求，每次全新请求GitHub服务端
+// 【关键修复】URL拼接时间戳，禁用浏览器缓存，每次强制请求GitHub最新数据
 async function githubApi(path, method = 'GET', body = null) {
   const { owner, repo } = parseRepo()
-  const timestamp = Date.now()
-  const reqUrl = `${API_BASE}/repos/${owner}/${repo}/contents/${path}?_t=${timestamp}`
   const headers = {
     'Authorization': `token ${globalConfig.githubToken}`,
     'Accept': 'application/vnd.github.v3+json',
@@ -384,11 +383,14 @@ async function githubApi(path, method = 'GET', body = null) {
     'Pragma': 'no-cache',
     'Expires': '0'
   }
+  // 拼接随机时间戳防缓存
+  const timestamp = Date.now()
+  const reqUrl = `${API_BASE}/repos/${owner}/${repo}/contents/${path}?_t=${timestamp}`
   const res = await fetch(reqUrl, {
-    method,
-    headers,
+    method, 
+    headers, 
     body: body ? JSON.stringify(body) : null,
-    cache: 'no-store'
+    cache: 'no-store' // Fetch层面彻底禁用缓存
   })
   if (!res.ok) throw new Error('请求失败')
   return res.json()
@@ -419,20 +421,15 @@ function clearAllSelect() {
   selectedItems = []
 }
 
-// 【核心完整刷新函数】全清空流程
+// 刷新函数：清空前端状态 + 重新发起无缓存API请求拉取GitHub实时数据
 async function refreshCurrentDir() {
-  // 1. 清空所有内存状态缓存
+  // 1. 清空所有选中项
   clearAllSelect()
+  // 2. 清空剪贴缓存
   copyCache = { path: '', name: '', type: '', action: '', list: [] }
-
-  // 2. 销毁页面DOM渲染内容，彻底清空视图
-  document.getElementById('treeView').innerHTML = ''
-  document.getElementById('fileArea').innerHTML = ''
-
-  // 3. 关闭悬浮右键菜单
+  // 3. 隐藏右键菜单
   hideContextMenu()
-
-  // 4. 重新从API拉取最新目录树、当前目录文件，再渲染
+  // 4. 重新渲染面包屑、重载目录树、重新无缓存请求文件列表
   renderBreadcrumb(currentPath)
   await loadTree()
   await renderFileList(currentPath)
@@ -477,6 +474,7 @@ function renderBreadcrumb(path) {
   })
 }
 
+// 全局右键菜单
 const contextMenu = document.getElementById('contextMenu')
 function showContextMenu(x, y, hasFile) {
   document.querySelectorAll('.item-only').forEach(el => {
@@ -484,6 +482,7 @@ function showContextMenu(x, y, hasFile) {
   })
   const pasteItem = contextMenu.querySelector('[data-action="paste"]')
   pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length))
+
   contextMenu.style.left = x + 'px'
   contextMenu.style.top = y + 'px'
   contextMenu.style.display = 'block'
@@ -502,6 +501,7 @@ async function renderFileList(path) {
     const all = [...dirs, ...files]
 
     const bindItemEvent = (el, item) => {
+      // 左键单击
       el.addEventListener('click', e => {
         e.stopPropagation()
         if (!multiSelectMode) clearAllSelect()
@@ -512,13 +512,16 @@ async function renderFileList(path) {
           selectedItems = selectedItems.filter(s => s.path !== item.path)
         }
       })
+      // 双击
       el.addEventListener('dblclick', () => {
         if (item.type === 'dir') navigateTo(item.path)
         else openPreview(item)
       })
+      // 右键逻辑
       el.addEventListener('contextmenu', e => {
         e.preventDefault()
         e.stopPropagation()
+
         const isSel = el.classList.contains('selected')
         if (!isSel) {
           clearAllSelect()
@@ -579,12 +582,14 @@ async function renderFileList(path) {
   }
 }
 
+// 框选
 function initDragSelect() {
   const area = document.getElementById('fileArea')
   let dragStart = false
   let startX, startY
   const selectBox = document.createElement('div')
   selectBox.className = 'select-box'
+
   area.addEventListener('mousedown', e => {
     if (e.target !== area) return
     clearAllSelect()
@@ -639,21 +644,25 @@ async function navigateTo(path) {
   hideContextMenu()
 }
 
+// 空白区域右键
 document.getElementById('fileArea').addEventListener('contextmenu', e => {
   e.preventDefault()
   clearAllSelect()
   showContextMenu(e.clientX, e.clientY, false)
 })
+// 点击页面空白关闭菜单
 document.addEventListener('click', hideContextMenu)
 
+// 多选开关
 document.getElementById('toggleMulti').addEventListener('change', e => {
   multiSelectMode = e.target.checked
   clearAllSelect()
 })
 
-// 绑定刷新按钮
+// 绑定刷新按钮点击事件
 document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDir)
 
+// 菜单点击
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
   item.addEventListener('click', async () => {
     hideContextMenu()
