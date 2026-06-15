@@ -373,14 +373,24 @@ function parseRepo() {
   return { owner: arr[0], repo: arr[1] }
 }
 
+// 【关键修复】URL拼接时间戳，禁用浏览器缓存，每次强制请求GitHub最新数据
 async function githubApi(path, method = 'GET', body = null) {
   const { owner, repo } = parseRepo()
   const headers = {
     'Authorization': `token ${globalConfig.githubToken}`,
-    'Accept': 'application/vnd.github.v3+json'
+    'Accept': 'application/vnd.github.v3+json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
   }
-  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
-    method, headers, body: body ? JSON.stringify(body) : null
+  // 拼接随机时间戳防缓存
+  const timestamp = Date.now()
+  const reqUrl = `${API_BASE}/repos/${owner}/${repo}/contents/${path}?_t=${timestamp}`
+  const res = await fetch(reqUrl, {
+    method, 
+    headers, 
+    body: body ? JSON.stringify(body) : null,
+    cache: 'no-store' // Fetch层面彻底禁用缓存
   })
   if (!res.ok) throw new Error('请求失败')
   return res.json()
@@ -411,7 +421,7 @@ function clearAllSelect() {
   selectedItems = []
 }
 
-// 新增：全局刷新函数（清空缓存、重载当前目录）
+// 刷新函数：清空前端状态 + 重新发起无缓存API请求拉取GitHub实时数据
 async function refreshCurrentDir() {
   // 1. 清空所有选中项
   clearAllSelect()
@@ -419,7 +429,7 @@ async function refreshCurrentDir() {
   copyCache = { path: '', name: '', type: '', action: '', list: [] }
   // 3. 隐藏右键菜单
   hideContextMenu()
-  // 4. 重新渲染面包屑、左侧树、当前文件列表
+  // 4. 重新渲染面包屑、重载目录树、重新无缓存请求文件列表
   renderBreadcrumb(currentPath)
   await loadTree()
   await renderFileList(currentPath)
@@ -507,19 +517,17 @@ async function renderFileList(path) {
         if (item.type === 'dir') navigateTo(item.path)
         else openPreview(item)
       })
-      // ========= 核心修复：右键逻辑 + 阻止冒泡 =========
+      // 右键逻辑
       el.addEventListener('contextmenu', e => {
         e.preventDefault()
-        e.stopPropagation() // 阻止冒泡，避免意外取消选中
+        e.stopPropagation()
 
         const isSel = el.classList.contains('selected')
         if (!isSel) {
-          // 当前未选中：清空所有，只选当前
           clearAllSelect()
           el.classList.add('selected')
           selectedItems = [item]
         }
-        // 已选中：直接保留全部选中，不做任何改动
         showContextMenu(e.clientX, e.clientY, true)
       })
     }
