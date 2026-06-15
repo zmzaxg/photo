@@ -96,7 +96,7 @@
     </div>
   </div>
 
-  <!-- 只保留 QRCode 库，去掉 otpauth -->
+  <!-- 只保留 QRCode 库 -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
   <script>
@@ -137,23 +137,25 @@
       return { owner: arr[0], repo: arr[1] }
     }
 
-    // ========== 2. 原生 TOTP 实现（不依赖 otpauth 库） ==========
-    // 工具函数：Base32 解码
+    // ========== 2. 修复版 TOTP 实现 ==========
+    // 修复：标准 Base32 解码，强制大写并处理填充
     function base32Decode(encoded) {
       const base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      encoded = encoded.toUpperCase().replace(/=+$/, ''); // 转大写并去掉填充
       let bits = "";
-      let bytes = [];
       for (let i = 0; i < encoded.length; i++) {
-        let val = base32chars.indexOf(encoded[i].toUpperCase());
+        const val = base32chars.indexOf(encoded[i]);
+        if (val === -1) throw new Error("Invalid base32 character");
         bits += val.toString(2).padStart(5, '0');
       }
+      const bytes = [];
       for (let i = 0; i + 8 <= bits.length; i += 8) {
         bytes.push(parseInt(bits.substr(i, 8), 2));
       }
       return new Uint8Array(bytes);
     }
 
-    // 工具函数：生成随机 Base32 密钥
+    // 生成标准 Base32 密钥（16字符）
     function generateSecret(length = 16) {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
       let secret = "";
@@ -163,7 +165,7 @@
       return secret;
     }
 
-    // 工具函数：计算 TOTP 验证码
+    // 计算 TOTP 验证码
     async function calculateTOTP(secret, digits = 6, period = 30) {
       const key = base32Decode(secret);
       const epoch = Math.floor(Date.now() / 1000);
@@ -189,9 +191,10 @@
       return (code % Math.pow(10, digits)).toString().padStart(digits, '0');
     }
 
-    // 验证 TOTP 验证码（支持前后各1个时间窗口）
+    // 验证 TOTP 验证码（前后各1个时间窗口，解决时间偏差问题）
     async function verifyTOTP(secret, token, digits = 6, period = 30) {
       const epoch = Math.floor(Date.now() / 1000);
+      // 检查当前、上一个、下一个时间窗口
       for (let i = -1; i <= 1; i++) {
         const time = Math.floor(epoch / period) + i;
         const key = base32Decode(secret);
@@ -244,12 +247,12 @@
     // 生成2FA密钥+二维码
     gen2faBtn.addEventListener('click', async () => {
       try {
-        // 1. 生成16位随机密钥
+        // 1. 生成标准16位Base32密钥
         otpSecret = generateSecret(16)
         secretKeyDom.innerText = otpSecret
         console.log('生成的密钥:', otpSecret)
 
-        // 2. 生成OTP链接
+        // 2. 生成标准OTP链接
         const otpUrl = `otpauth://totp/EdgeOne相册系统:相册后台?secret=${otpSecret}&issuer=EdgeOne相册系统&algorithm=SHA1&digits=6&period=30`
         console.log('OTP链接:', otpUrl)
 
@@ -283,7 +286,7 @@
         alert('绑定成功，请使用验证码登录')
         location.reload()
       } else {
-        alert('验证码错误，请重试')
+        alert('验证码错误，请重试（请确保手机时间与服务器时间同步）')
       }
     })
 
@@ -296,7 +299,7 @@
         fileManageArea.style.display = 'block'
         loadFileList()
       } else {
-        alert('验证码错误')
+        alert('验证码错误，请重试（请确保手机时间与服务器时间同步）')
       }
     })
 
