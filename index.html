@@ -137,14 +137,12 @@
   </div>
 
   <script type="module">
-    // ====================== 全局常量配置 ======================
-    const STATIC_BASE = '/albums/' // 静态资源访问根路径
+    const STATIC_BASE = '/albums/'
     const THUMB_W = 200
     const THUMB_H = 150
-    const FOLDER_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/ // 匹配 YYYY-MM-DD-相册名
+    const FOLDER_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
     const IMG_EXT_WHITELIST = ['jpg','jpeg','png','webp']
 
-    // DOM缓存
     const dom = {
       albumPage: document.getElementById('albumPage'),
       detailPage: document.getElementById('detailPage'),
@@ -160,7 +158,6 @@
       exifGps: document.getElementById('exifGps')
     }
 
-    // 清空所有运行时缓存、DOM状态、图片资源（全页面无缓存核心）
     function clearAllRuntimeCache() {
       window._albumCacheMap = null
       dom.previewImg.src = ''
@@ -175,65 +172,52 @@
       dom.albumList.innerHTML = '<div class="empty-tip">正在重新扫描相册...</div>'
     }
 
-    // 剥离日期前缀，获取纯相册名称
     function extractPureAlbumName(folderFullName) {
       const match = folderFullName.match(FOLDER_REG)
       return match ? match[2] : folderFullName
     }
 
-    // 资源链接追加时间戳防浏览器缓存
     function getNoCacheUrl(rawPath) {
       return rawPath + '?_t=' + Date.now()
     }
 
-    // Canvas生成固定200×150等比缩略图，object-fit:cover逻辑
     function createCanvasThumbnail(rawImgSrc, doneCallback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.src = getNoCacheUrl(rawImgSrc)
-
       img.onload = function() {
         const canvas = document.createElement('canvas')
         canvas.width = THUMB_W
         canvas.height = THUMB_H
         const ctx = canvas.getContext('2d')
-        // 等比铺满裁剪
         const scale = Math.max(THUMB_W / img.width, THUMB_H / img.height)
         const drawWidth = img.width * scale
         const drawHeight = img.height * scale
         const offsetX = (THUMB_W - drawWidth) / 2
         const offsetY = (THUMB_H - drawHeight) / 2
         ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
-        img.src = '' // 释放内存
+        img.src = ''
         doneCallback(canvas.toDataURL('image/jpeg', 0.82))
       }
-
       img.onerror = function() {
-        // 加载失败兜底占位图
         const fallbackSvg = `<svg width="${THUMB_W}" height="${THUMB_H}" xmlns="http://www.w3.org/2000/svg"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">图片加载失败</text></svg>`
         doneCallback('data:image/svg+xml;utf8,' + fallbackSvg)
       }
     }
 
-    // 使用piexif解析图片EXIF完整信息
     function parseImageExif(rawImagePath) {
       return new Promise(function(resolve) {
         const img = new Image()
         img.crossOrigin = 'anonymous'
         img.src = getNoCacheUrl(rawImagePath)
-
         img.onload = function() {
           try {
             const fullExif = piexif.load(img.src)
             const ifd0 = fullExif['0th'] || {}
             const exifData = fullExif.Exif || {}
             const gpsData = fullExif.GPS || {}
-
-            // 拍摄时间
             const takeTime = exifData[piexif.ExifIFD.DateTimeOriginal] || '无拍摄时间'
-            // 相机型号
             const cameraModel = ifd0[piexif.ImageIFD.Model] || '未知设备'
-            // 曝光参数
             const expList = []
             if(exifData[piexif.ExifIFD.FNumber]) {
               expList.push('f/' + piexif.GPSHelper.dmsToDeg(exifData[piexif.ExifIFD.FNumber]))
@@ -246,21 +230,14 @@
               expList.push('ISO' + exifData[piexif.ExifIFD.ISOSpeedRatings])
             }
             const expText = expList.length ? expList.join(' ') : '无曝光数据'
-            // GPS坐标
             let gpsText = '无GPS坐标'
             if(gpsData[piexif.GPSIFD.GPSLatitude] && gpsData[piexif.GPSIFD.GPSLongitude]) {
               const lat = piexif.GPSHelper.dmsToDeg(gpsData[piexif.GPSIFD.GPSLatitude])
               const lon = piexif.GPSHelper.dmsToDeg(gpsData[piexif.GPSIFD.GPSLongitude])
               gpsText = '纬度' + lat.toFixed(6) + ' 经度' + lon.toFixed(6)
             }
-
             img.src = ''
-            resolve({
-              takeTime,
-              cameraModel,
-              expText,
-              gpsText
-            })
+            resolve({takeTime,cameraModel,expText,gpsText})
           } catch(err) {
             img.src = ''
             resolve({takeTime:'读取失败',cameraModel:'读取失败',expText:'读取失败',gpsText:'读取失败'})
@@ -272,38 +249,23 @@
       })
     }
 
-    // 原图拖拽+滚轮缩放逻辑，每次打开详情完全重置监听
     function bindImageDragZoom() {
-      // 销毁旧监听，避免多次绑定
       dom.previewImg.onwheel = null
       dom.previewImg.onmousedown = null
       document.onmousemove = null
       document.onmouseup = null
-
-      const state = {
-        scale: 1,
-        offsetX: 0,
-        offsetY: 0,
-        isDragging: false,
-        startMouseX: 0,
-        startMouseY: 0
-      }
+      const state = {scale:1,offsetX:0,offsetY:0,isDragging:false,startMouseX:0,startMouseY:0}
       dom.previewImg.style.transform = 'translate(0px,0px) scale(1)'
-
-      // 滚轮缩放
       dom.previewImg.addEventListener('wheel', function(e) {
         e.preventDefault()
         const delta = e.deltaY > 0 ? -0.12 : 0.12
         state.scale = Math.max(0.4, Math.min(state.scale + delta, 3.2))
         dom.previewImg.style.transform = 'translate(' + state.offsetX + 'px,' + state.offsetY + 'px) scale(' + state.scale + ')'
       }, { passive: false })
-
-      // 鼠标拖拽
       dom.previewImg.addEventListener('mousedown', function(e) {
         state.isDragging = true
         state.startMouseX = e.clientX - state.offsetX
         state.startMouseY = e.clientY - state.offsetY
-
         function onMouseMove(e) {
           if(!state.isDragging) return
           state.offsetX = e.clientX - state.startMouseX
@@ -320,14 +282,12 @@
       })
     }
 
-    // 加载图片详情页数据
     async function loadPhotoDetail(albumFolderName, photoFileName) {
       clearAllRuntimeCache()
       const rawImageUrl = STATIC_BASE + albumFolderName + '/' + photoFileName
       dom.imgLink.value = location.origin + rawImageUrl
       dom.previewImg.src = getNoCacheUrl(rawImageUrl)
       bindImageDragZoom()
-      // 解析EXIF
       const exifResult = await parseImageExif(rawImageUrl)
       dom.exifTime.textContent = exifResult.takeTime
       dom.exifCamera.textContent = exifResult.cameraModel
@@ -335,28 +295,24 @@
       dom.exifGps.textContent = exifResult.gpsText
     }
 
-    // ====================== 核心：Vite import.meta.glob 自动扫描albums目录 ======================
+    // ====================== 修复核心：glob提取全部文件路径数组，打包后不会为空 ======================
+    // 1. Vite glob导出全部匹配文件路径数组（开发/打包双环境都有值）
+    const globEntries = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' }))
+    console.log('全局glob文件清单（打包后必有值）：', globEntries)
+
     async function scanAllAlbumByGlob() {
       clearAllRuntimeCache()
-      // 扫描public下全部图片，Vite开发/打包双环境兼容
-      const globFileMap = import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false, import: 'default' })
       const albumMap = new Map()
-
-      for(const globPath in globFileMap) {
-        // 剥离/public前缀，得到相对albums路径
+      // 直接遍历glob预导出的路径数组，不再实时读取glob对象
+      for(const globPath of globEntries) {
         const relativePath = globPath.replace('/public/albums/', '')
         const pathSegments = relativePath.split('/')
-        // 必须两层结构：文件夹/图片
         if(pathSegments.length < 2) continue
         const folderName = pathSegments[0]
         const imageFileName = pathSegments[1]
         const ext = imageFileName.split('.').pop().toLowerCase()
-        // 过滤不支持的图片后缀
         if(!IMG_EXT_WHITELIST.includes(ext)) continue
-        // 只保留 YYYY-MM-DD- 开头的相册文件夹
         if(!FOLDER_REG.test(folderName)) continue
-
-        // 存入相册Map
         if(!albumMap.has(folderName)) {
           albumMap.set(folderName, {
             fullFolderName: folderName,
@@ -366,16 +322,14 @@
         }
         albumMap.get(folderName).imageList.push(imageFileName)
       }
-
       window._albumCacheMap = albumMap
       await renderAlbumGrid(albumMap)
     }
 
-    // 渲染相册网格列表
     async function renderAlbumGrid(albumMap) {
       dom.albumList.innerHTML = ''
       if(albumMap.size === 0) {
-        dom.albumList.innerHTML = '<div class="empty-tip">未识别有效相册<br>请在 public/albums 放置 YYYY-MM-DD-名称 格式文件夹</div>'
+        dom.albumList.innerHTML = '<div class="empty-tip">未识别有效相册<br>1.检查public/albums文件夹是否存在<br>2.文件夹命名必须 YYYY-MM-DD-相册名<br>3.内部放入jpg/png/webp图片</div>'
         return
       }
       const showFullDateName = dom.toggleDate.checked
@@ -385,13 +339,9 @@
         const albumCard = document.createElement('div')
         albumCard.className = 'album-item'
         const displayName = showFullDateName ? albumData.fullFolderName : albumData.pureName
-
-        // 生成缩略图后填充卡片
         createCanvasThumbnail(firstPreviewImg, function(thumbDataUrl) {
           albumCard.innerHTML = `<img class="album-thumb" src="${thumbDataUrl}"><div class="album-name">${displayName}</div>`
         })
-
-        // 点击跳转至第一张图片详情
         albumCard.addEventListener('click', function() {
           clearAllRuntimeCache()
           location.hash = 'album=' + encodeURIComponent(folderKey) + '&photo=' + encodeURIComponent(albumData.imageList[0])
@@ -400,7 +350,6 @@
       }
     }
 
-    // 解析Hash路由参数
     function parseHashRoute() {
       const hashStr = location.hash.slice(1)
       const searchParams = new URLSearchParams(hashStr)
@@ -410,7 +359,6 @@
       }
     }
 
-    // 根据路由切换列表/详情页面
     async function switchPageByRoute() {
       clearAllRuntimeCache()
       const route = parseHashRoute()
@@ -424,13 +372,10 @@
       }
     }
 
-    // ====================== 全局事件绑定 ======================
-    // 返回列表按钮
     dom.backBtn.onclick = function() {
       clearAllRuntimeCache()
       location.hash = ''
     }
-    // 复制外链按钮
     dom.copyLink.onclick = async function() {
       try {
         await navigator.clipboard.writeText(dom.imgLink.value)
@@ -439,19 +384,16 @@
         alert('复制失败，请手动复制输入框内链接')
       }
     }
-    // 切换是否显示日期前缀复选框
     dom.toggleDate.addEventListener('change', async function() {
       clearAllRuntimeCache()
       await scanAllAlbumByGlob()
       await switchPageByRoute()
     })
-    // Hash路由变化（浏览器前进/后退）
     window.addEventListener('hashchange', async function() {
       clearAllRuntimeCache()
       await scanAllAlbumByGlob()
       await switchPageByRoute()
     })
-    // 切回页面可见时重新全量扫描
     document.addEventListener('visibilitychange', async function() {
       if(document.visibilityState === 'visible') {
         clearAllRuntimeCache()
@@ -459,11 +401,10 @@
         await switchPageByRoute()
       }
     })
-    // 页面首次加载入口
     window.addEventListener('load', async function() {
       await scanAllAlbumByGlob()
       await switchPageByRoute()
     })
-  </script>
+</script>
 </body>
 </html>
