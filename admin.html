@@ -176,8 +176,9 @@
       background:#fff;
       padding: 20px;
       border-radius: 4px;
-      min-width: 320px;
+      min-width: 220px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      position: relative;
     }
     .modal-title { font-size:16px; margin-bottom:16px; font-weight:600; }
     .modal-row { margin:10px 0; font-size:13px; }
@@ -260,9 +261,7 @@
 
     .loading-modal .modal-box {
       text-align: center;
-      min-width: 220px;
       padding: 30px 20px;
-      position: relative;
     }
     .loading-text {
       font-size: 14px;
@@ -339,7 +338,6 @@
 
 <div class="modal loading-modal" id="loadingModal">
   <div class="modal-box">
-    <!-- 倒计时关闭按钮 -->
     <button class="loading-countdown-btn" id="loadingCountBtn">10</button>
     <div class="loading-text">正在处理，请稍候...</div>
   </div>
@@ -415,16 +413,18 @@ const API_BASE = 'https://api.github.com'
 const loadingModal = document.getElementById('loadingModal')
 const loadingCountBtn = document.getElementById('loadingCountBtn')
 
-// 全局唯一加载锁：所有API操作共用，防止并发重复操作
-let isGlobalLoading = false;
+// 后台任务标记：接口/渲染任务是否还在执行（不会被关闭遮罩打断）
+let taskRunning = false;
+// 界面锁定标记：控制按钮禁用、遮罩显示
+let uiLocked = false;
 let loadingTimer = null;
 const MAX_LOAD_SECONDS = 10;
 let currentCount = MAX_LOAD_SECONDS;
 
-// 强制关闭加载遮罩兜底函数
-function forceEndLoading() {
+// 仅关闭遮罩、解锁界面，不终止后台请求
+function closeLoadingMaskOnly() {
   clearInterval(loadingTimer);
-  isGlobalLoading = false;
+  uiLocked = false;
   loadingModal.style.display = 'none';
   currentCount = MAX_LOAD_SECONDS;
   loadingCountBtn.textContent = currentCount;
@@ -435,10 +435,17 @@ function forceEndLoading() {
   })
 }
 
-// 统一开启加载遮罩 + 禁用全部操作按钮 + 启动10秒倒计时
+// 完整结束（任务执行完毕正常调用）
+function fullEndLoading() {
+  taskRunning = false;
+  closeLoadingMaskOnly();
+}
+
+// 统一开启加载：锁定界面、弹出遮罩、启动倒计时、标记任务运行
 function startLoading() {
-  if(isGlobalLoading) return;
-  isGlobalLoading = true;
+  if (uiLocked || taskRunning) return;
+  taskRunning = true;
+  uiLocked = true;
   loadingModal.style.display = 'flex';
   // 顶部按钮禁用
   document.querySelectorAll('.top-bar button, #btnRefresh').forEach(btn => {
@@ -452,7 +459,7 @@ function startLoading() {
   loadingTimer = setInterval(() => {
     currentCount--;
     loadingCountBtn.textContent = currentCount;
-    if(currentCount <= 0) {
+    if (currentCount <= 0) {
       clearInterval(loadingTimer);
       loadingCountBtn.textContent = '×';
       loadingCountBtn.classList.add('timeout');
@@ -460,17 +467,11 @@ function startLoading() {
   }, 1000)
 }
 
-// 统一正常关闭加载遮罩（接口正常完成调用）
-function endLoading() {
-  if(!isGlobalLoading) return;
-  forceEndLoading();
-}
-
-// 右上角关闭按钮点击事件
+// 右上角关闭按钮点击：只关遮罩，后台继续加载
 loadingCountBtn.addEventListener('click', () => {
-  if(isGlobalLoading) {
-    alert('已强制终止加载，部分后台请求可能仍在执行，数据存在不一致风险！');
-    forceEndLoading();
+  if (uiLocked) {
+    alert('仅关闭加载弹窗，后台数据加载任务仍在后台执行，完成后会自动刷新目录列表');
+    closeLoadingMaskOnly();
   }
 })
 
@@ -644,7 +645,7 @@ function clearAllSelect() {
   selectedItems = []
 }
 
-// 统一刷新渲染流程：内置加载锁，所有操作完成后统一调用
+// 统一刷新渲染流程
 async function reloadAllView() {
   renderBreadcrumb(currentPath)
   await loadTree()
@@ -653,7 +654,7 @@ async function reloadAllView() {
 
 // 刷新按钮主逻辑
 async function refreshCurrentDir() {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   startLoading();
   try {
     clearAllSelect()
@@ -665,7 +666,7 @@ async function refreshCurrentDir() {
   } catch (err) {
     console.error('刷新加载失败：', err)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 }
 
@@ -685,14 +686,14 @@ async function scanDirTree(path, parent, level) {
       item.innerHTML = `<span>📁</span> ${showDatePrefix ? d.name : pureName(d.name)}`
       if (d.path === currentPath) item.classList.add('active')
       item.addEventListener('click', async () => {
-        if(isGlobalLoading) return;
+        if (uiLocked || taskRunning) return;
         startLoading();
         try {
           currentPath = d.path
           await reloadAllView();
           hideContextMenu()
         } finally {
-          endLoading();
+          fullEndLoading();
         }
       })
       parent.appendChild(item)
@@ -715,14 +716,14 @@ function renderBreadcrumb(path) {
   bc.innerHTML = html
   bc.querySelectorAll('a').forEach(a => {
     a.addEventListener('click', async () => {
-      if(isGlobalLoading) return;
+      if (uiLocked || taskRunning) return;
       startLoading();
       try {
         currentPath = a.dataset.path
         await reloadAllView();
         hideContextMenu()
       } finally {
-        endLoading();
+        fullEndLoading();
       }
     })
   })
@@ -731,10 +732,10 @@ function renderBreadcrumb(path) {
 const contextMenu = document.getElementById('contextMenu')
 function showContextMenu(x, y, hasFile) {
   document.querySelectorAll('.item-only').forEach(el => {
-    el.classList.toggle('menu-disabled', !hasFile || isGlobalLoading)
+    el.classList.toggle('menu-disabled', !hasFile || uiLocked)
   })
   const pasteItem = contextMenu.querySelector('[data-action="paste"]')
-  pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length) || isGlobalLoading)
+  pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length) || uiLocked)
   contextMenu.style.left = x + 'px'
   contextMenu.style.top = y + 'px'
   contextMenu.style.display = 'block'
@@ -754,7 +755,7 @@ async function renderFileList(path) {
 
     const bindItemEvent = (el, item) => {
       el.addEventListener('click', e => {
-        if(isGlobalLoading) return;
+        if (uiLocked) return;
         e.stopPropagation()
         if (!multiSelectMode) clearAllSelect()
         el.classList.toggle('selected')
@@ -765,19 +766,19 @@ async function renderFileList(path) {
         }
       })
       el.addEventListener('dblclick', async () => {
-        if(isGlobalLoading) return;
+        if (uiLocked || taskRunning) return;
         if (item.type === 'dir') {
           startLoading();
           try {
             currentPath = item.path
             await reloadAllView();
           } finally {
-            endLoading();
+            fullEndLoading();
           }
         } else openPreview(item)
       })
       el.addEventListener('contextmenu', e => {
-        if(isGlobalLoading) return;
+        if (uiLocked) return;
         e.preventDefault()
         e.stopPropagation()
         const isSel = el.classList.contains('selected')
@@ -847,7 +848,7 @@ function initDragSelect() {
   const selectBox = document.createElement('div')
   selectBox.className = 'select-box'
   area.addEventListener('mousedown', e => {
-    if(isGlobalLoading || e.target !== area) return
+    if (uiLocked || e.target !== area) return
     clearAllSelect()
     dragStart = true
     startX = e.clientX
@@ -860,7 +861,7 @@ function initDragSelect() {
     area.appendChild(selectBox)
   })
   area.addEventListener('mousemove', e => {
-    if (!dragStart || isGlobalLoading) return
+    if (!dragStart || uiLocked) return
     const rect = area.getBoundingClientRect()
     const curX = e.clientX - rect.left
     const curY = e.clientY - rect.top
@@ -870,7 +871,7 @@ function initDragSelect() {
     selectBox.style.top = Math.min(startY - rect.top, curY) + 'px'
   })
   area.addEventListener('mouseup', () => {
-    if (!dragStart || isGlobalLoading) return
+    if (!dragStart || uiLocked) return
     dragStart = false
     const boxRect = selectBox.getBoundingClientRect()
     document.querySelectorAll('.file-card, .view-list tr').forEach(el => {
@@ -893,7 +894,7 @@ function initDragSelect() {
 }
 
 document.getElementById('fileArea').addEventListener('contextmenu', e => {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   e.preventDefault()
   clearAllSelect()
   showContextMenu(e.clientX, e.clientY, false)
@@ -901,7 +902,7 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
 document.addEventListener('click', hideContextMenu)
 
 document.getElementById('toggleMulti').addEventListener('change', e => {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   multiSelectMode = e.target.checked
   clearAllSelect()
 })
@@ -910,7 +911,7 @@ document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDi
 
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
   item.addEventListener('click', async () => {
-    if(isGlobalLoading) return;
+    if (uiLocked) return;
     hideContextMenu()
     const act = item.dataset.action
     switch(act) {
@@ -957,7 +958,7 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
 
 // 批量删除选中（区分文件/文件夹）
 async function batchDeleteSelected() {
-  if(isGlobalLoading || !selectedItems.length) return
+  if (uiLocked || taskRunning || !selectedItems.length) return
   const dirItems = selectedItems.filter(i => i.type === 'dir')
   const fileItems = selectedItems.filter(i => i.type === 'file')
   let msg = ''
@@ -982,13 +983,13 @@ async function batchDeleteSelected() {
   } catch (err) {
     console.error('批量删除异常', err)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 }
 
 // 粘贴复制/剪切缓存（支持文件夹+文件混合）
 async function doPaste() {
-  if(isGlobalLoading || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
+  if (uiLocked || taskRunning || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
   const isCut = copyCache.action === 'cut'
   const targetParent = currentPath
   startLoading();
@@ -1014,7 +1015,7 @@ async function doPaste() {
   } catch (err) {
     console.error('粘贴异常', err)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 }
 
@@ -1025,7 +1026,7 @@ document.getElementById('uploadPanelClose').addEventListener('click', ()=>{
 })
 
 document.getElementById('btnNewFolder').addEventListener('click', () => {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   document.getElementById('newFolderModal').style.display = 'flex'
   document.getElementById('newFolderName').value = ''
   document.getElementById('newFolderName').focus()
@@ -1034,7 +1035,7 @@ document.getElementById('cancelNew').addEventListener('click', ()=>{
   document.getElementById('newFolderModal').style.display = 'none'
 })
 document.getElementById('confirmNew').addEventListener('click', async () => {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   let name = document.getElementById('newFolderName').value.trim()
   if (!name) return alert('请输入文件夹名称')
   const fullDirName = fullName(name)
@@ -1049,17 +1050,17 @@ document.getElementById('confirmNew').addEventListener('click', async () => {
     alert('创建失败')
     console.error(e)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 })
 
 document.getElementById('btnUpload').addEventListener('click', () => {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   document.getElementById('fileUpload').click()
 })
 
 document.getElementById('fileUpload').addEventListener('change', async e => {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   const files = e.target.files
   if (!files.length) return
   uploadPanel.classList.remove('hidden')
@@ -1120,13 +1121,13 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
   } catch (err) {
     console.error('上传整体异常', err)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
   e.target.value = ''
 })
 
 function openPreview(item) {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   const url = location.origin + '/' + item.path
   document.getElementById('previewImg').src = url
   document.getElementById('previewModal').style.display = 'flex'
@@ -1136,7 +1137,7 @@ document.getElementById('closePreview').addEventListener('click', () => {
 })
 
 function openProp() {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   const item = selectedItems[0]
   const name = showDatePrefix ? item.name : pureName(item.name)
   const type = item.type === 'dir' ? '文件夹' : '文件'
@@ -1156,7 +1157,7 @@ document.getElementById('closeProp').addEventListener('click', () => {
 })
 
 function openRename() {
-  if(isGlobalLoading) return;
+  if (uiLocked) return;
   const disp = showDatePrefix ? selectedItems[0].name : pureName(selectedItems[0].name)
   document.getElementById('renameInput').value = disp
   document.getElementById('renameModal').style.display = 'flex'
@@ -1166,7 +1167,7 @@ document.getElementById('cancelRename').addEventListener('click', () => {
   document.getElementById('renameModal').style.display = 'none'
 })
 document.getElementById('confirmRename').addEventListener('click', async () => {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   const newDisp = document.getElementById('renameInput').value.trim()
   if (!newDisp) return
   const newFullName = fullName(newDisp)
@@ -1189,33 +1190,33 @@ document.getElementById('confirmRename').addEventListener('click', async () => {
     alert('重命名操作失败')
     console.error(err)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 })
 
 document.getElementById('viewIcon').addEventListener('click', async () => {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   viewMode = 'icon'
   startLoading();
   try {
     await renderFileList(currentPath)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 })
 document.getElementById('viewList').addEventListener('click', async () => {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   viewMode = 'list'
   startLoading();
   try {
     await renderFileList(currentPath)
   } finally {
-    endLoading();
+    fullEndLoading();
   }
 })
 
 document.getElementById('toggleDate').addEventListener('change', async e => {
-  if(isGlobalLoading) return;
+  if (uiLocked || taskRunning) return;
   showDatePrefix = e.target.checked
   await refreshCurrentDir()
 })
@@ -1229,4 +1230,4 @@ window.onload = async () => {
 }
 </script>
 </body>
-</html> 
+</html>
