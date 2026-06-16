@@ -6,389 +6,387 @@
   <title>相册管理后台 - Windows 风格文件管理器</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
-    body { background: #f3f3f3; height: 100vh; overflow: hidden; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+body { background: #f3f3f3; height: 100vh; overflow: hidden; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
 
-    .top-bar {
-      height: auto;
-      background: #fff;
-      border-bottom: 1px solid #ddd;
-      padding: 8px 12px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      --header-height: auto;
-    }
-    .menu-toggle {
-      display: none;
-      width: 44px;
-      height: 44px;
-      border: 1px solid #ccc;
-      background: #f8f8f8;
-      font-size: 18px;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .top-main-buttons {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      flex: 1;
-    }
-    /* PC端默认展开面板，修复PC看不到复选框 */
-    .fold-panel {
-      width: 100%;
-      display: flex;
-      padding-top: 8px;
-      border-top: 1px solid #eee;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
-    }
-    .fold-panel.show { display: flex; }
+.top-bar {
+  height: auto;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 8px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  --header-height: auto;
+}
+.menu-toggle {
+  display: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #ccc;
+  background: #f8f8f8;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.top-main-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+}
+.fold-panel {
+  width: 100%;
+  display: flex;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.fold-panel.show { display: flex; }
 
-    .top-bar button {
-      padding: 8px 10px;
-      border: 1px solid #ccc;
-      background: #f8f8f8;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 13px;
-      min-height: 44px;
-      min-width: 44px;
-    }
-    .top-bar button:hover { background: #e9e9e9; }
-    .top-bar button:disabled {
-      background: #eee;
-      color: #aaa;
-      cursor: not-allowed;
-    }
-    .view-group { display: flex; gap: 4px; flex-wrap: wrap; }
-    .switch-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size:13px;
-      white-space: nowrap;
-    }
+.top-bar button {
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  background: #f8f8f8;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  min-height: 44px;
+  min-width: 44px;
+}
+.top-bar button:hover { background: #e9e9e9; }
+.top-bar button:disabled {
+  background: #eee;
+  color: #aaa;
+  cursor: not-allowed;
+}
+.view-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.switch-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size:13px;
+  white-space: nowrap;
+}
 
-    .container {
-      display: flex;
-      height: calc(100vh - var(--header-height, 56px));
-      overflow: hidden;
-    }
+.container {
+  display: flex;
+  height: calc(100vh - var(--header-height, 56px));
+  overflow: hidden;
+}
 
-    .sidebar {
-      width: 220px;
-      background: #fff;
-      border-right: 1px solid #ddd;
-      padding: 10px;
-      overflow-y: auto;
-      transition: width 0.2s ease;
-      flex-shrink: 0;
-      height: 100%;
-    }
-    .sidebar.hide { width: 0; padding: 0; overflow: hidden; border: none; }
-    .sidebar-toggle {
-      position: fixed;
-      left: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 99;
-      width: 36px;
-      height: 80px;
-      background: #0078d4;
-      color: #fff;
-      border: none;
-      border-radius: 0 6px 6px 0;
-      font-size: 16px;
-      cursor: pointer;
-      display: none;
-    }
-    .tree-title { font-size:14px; font-weight:600; margin-bottom:8px; color:#333; }
-    .tree-item {
-      padding: 8px 6px;
-      border-radius: 2px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      white-space: nowrap;
-      min-height: 44px;
-    }
-    .tree-item:hover { background: #e5f3ff; }
-    .tree-item.active { background: #0078d4; color: #fff; }
-    .tree-indent { margin-left: 14px; }
+.sidebar {
+  width: 220px;
+  background: #fff;
+  border-right: 1px solid #ddd;
+  padding: 10px;
+  overflow-y: auto;
+  transition: width 0.2s ease;
+  flex-shrink: 0;
+  height: 100%;
+}
+.sidebar.hide { width: 0; padding: 0; overflow: hidden; border: none; }
+.sidebar-toggle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 99;
+  width: 36px;
+  height: 80px;
+  background: #0078d4;
+  color: #fff;
+  border: none;
+  border-radius: 0 6px 6px 0;
+  font-size: 16px;
+  cursor: pointer;
+  display: none;
+}
+.tree-title { font-size:14px; font-weight:600; margin-bottom:8px; color:#333; }
+.tree-item {
+  padding: 8px 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  min-height: 44px;
+}
+.tree-item:hover { background: #e5f3ff; }
+.tree-item.active { background: #0078d4; color: #fff; }
+.tree-indent { margin-left: 14px; }
 
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    .breadcrumb-wrap {
-      height: auto;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #fff;
-      border-bottom: 1px solid #ddd;
-      padding: 8px 12px;
-      flex-wrap: wrap;
-      flex-shrink: 0;
-    }
-    #btnRefresh {
-      padding: 8px 8px;
-      font-size:12px;
-      border:1px solid #ddd;
-      background:#f8f8f8;
-      border-radius:2px;
-      cursor:pointer;
-      min-height:44px;
-      min-width:44px;
-    }
-    #btnRefresh:hover {
-      background:#e9e9e9;
-    }
-    #btnRefresh:disabled {
-      background: #eee;
-      color: #aaa;
-      cursor: not-allowed;
-    }
-    .breadcrumb {
-      flex:1;
-      line-height: 32px;
-      font-size:13px;
-      overflow-x: auto;
-      white-space: nowrap;
-    }
-    .breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
-    .breadcrumb a:hover { text-decoration:underline; }
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.breadcrumb-wrap {
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#btnRefresh {
+  padding: 8px 8px;
+  font-size:12px;
+  border:1px solid #ddd;
+  background:#f8f8f8;
+  border-radius:2px;
+  cursor:pointer;
+  min-height:44px;
+  min-width:44px;
+}
+#btnRefresh:hover {
+  background:#e9e9e9;
+}
+#btnRefresh:disabled {
+  background: #eee;
+  color: #aaa;
+  cursor: not-allowed;
+}
+.breadcrumb {
+  flex:1;
+  line-height: 32px;
+  font-size:13px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.breadcrumb a { color:#0078d4; text-decoration:none; cursor:pointer; }
+.breadcrumb a:hover { text-decoration:underline; }
 
-    .file-area {
-      flex:1;
-      padding:8px;
-      padding-bottom: 120px;
-      overflow:auto;
-      background:#fff;
-      min-height: 0;
-      position: relative;
-    }
-    .select-box {
-      position: absolute;
-      border: 1px dotted #0078d4;
-      background: rgba(0, 120, 212, 0.1);
-      pointer-events: none;
-      z-index: 10;
-    }
+.file-area {
+  flex:1;
+  padding:8px;
+  padding-bottom: 120px;
+  overflow:auto;
+  background:#fff;
+  min-height: 0;
+  position: relative;
+}
+.select-box {
+  position: absolute;
+  border: 1px dotted #0078d4;
+  background: rgba(0, 120, 212, 0.1);
+  pointer-events: none;
+  z-index: 10;
+}
 
-    .view-icon {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-      gap: 8px;
-    }
-    .file-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 8px 4px;
-      border-radius: 2px;
-      cursor: pointer;
-      min-height: 100px;
-    }
-    .file-card:hover { background: #e5f3ff; }
-    .file-card.selected { background: #cce8ff; }
-    .file-icon { font-size: 32px; margin-bottom:4px; }
-    .file-name { font-size:11px; text-align:center; word-break:break-all; }
+.view-icon {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+}
+.file-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border-radius: 2px;
+  cursor: pointer;
+  min-height: 100px;
+}
+.file-card:hover { background: #e5f3ff; }
+.file-card.selected { background: #cce8ff; }
+.file-icon { font-size: 32px; margin-bottom:4px; }
+.file-name { font-size:11px; text-align:center; word-break:break-all; }
 
-    .view-list { width:100%; border-collapse: collapse; }
-    .view-list th, .view-list td {
-      border: 1px solid #eee;
-      padding: 10px 6px;
-      text-align: left;
-      font-size:12px;
-    }
-    .view-list th { background:#f8f8f8; }
-    .view-list tr:hover { background:#e5f3ff; }
-    .view-list tr.selected { background:#cce8ff; }
+.view-list { width:100%; border-collapse: collapse; }
+.view-list th, .view-list td {
+  border: 1px solid #eee;
+  padding: 10px 6px;
+  text-align: left;
+  font-size:12px;
+}
+.view-list th { background:#f8f8f8; }
+.view-list tr:hover { background:#e5f3ff; }
+.view-list tr.selected { background:#cce8ff; }
 
-    .context-menu {
-      position: fixed;
-      width: min(160px, 85vw);
-      background: #fff;
-      border: 1px solid #ccc;
-      box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
-      z-index: 9999;
-      display: none;
-    }
-    .menu-item {
-      padding: 12px 12px;
-      font-size:13px;
-      cursor: pointer;
-      min-height:44px;
-    }
-    .menu-item:hover { background: #e5f3ff; }
-    .menu-divider { height:1px; background:#ddd; margin:4px 0; }
-    .menu-disabled { color: #999; cursor: default; }
-    .menu-disabled:hover { background: transparent; }
+.context-menu {
+  position: fixed;
+  width: min(160px, 85vw);
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
+  z-index: 9999;
+  display: none;
+}
+.menu-item {
+  padding: 12px 12px;
+  font-size:13px;
+  cursor: pointer;
+  min-height:44px;
+}
+.menu-item:hover { background: #e5f3ff; }
+.menu-divider { height:1px; background:#ddd; margin:4px 0; }
+.menu-disabled { color: #999; cursor: default; }
+.menu-disabled:hover { background: transparent; }
 
-    .modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.4);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-      padding:10px;
-    }
-    .modal-box {
-      background:#fff;
-      padding: 16px;
-      border-radius: 4px;
-      width: min(480px, 100%);
-      max-height: 85vh;
-      overflow-y: auto;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      position: relative;
-    }
-    .modal-title { font-size:16px; margin-bottom:16px; font-weight:600; }
-    .modal-row { margin:10px 0; font-size:13px; }
-    .modal-input {
-      width:100%;
-      padding:10px;
-      border:1px solid #ccc;
-      border-radius:2px;
-      margin-top:4px;
-      font-size:14px;
-    }
-    .modal-btn-group { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
-    .modal-btn {
-      padding:10px 14px;
-      border:1px solid #ccc;
-      background:#f8f8f8;
-      cursor:pointer;
-      border-radius:2px;
-      min-height:44px;
-      min-width:80px;
-    }
-    .modal-btn:disabled {
-      background: #eee;
-      color: #aaa;
-      cursor: not-allowed;
-    }
-    .modal-btn.primary { background:#0078d4; color:#fff; border-color:#0078d4; }
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding:10px;
+}
+.modal-box {
+  background:#fff;
+  padding: 16px;
+  border-radius: 4px;
+  width: min(480px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  position: relative;
+}
+.modal-title { font-size:16px; margin-bottom:16px; font-weight:600; }
+.modal-row { margin:10px 0; font-size:13px; }
+.modal-input {
+  width:100%;
+  padding:10px;
+  border:1px solid #ccc;
+  border-radius:2px;
+  margin-top:4px;
+  font-size:14px;
+}
+.modal-btn-group { margin-top:20px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+.modal-btn {
+  padding:10px 14px;
+  border:1px solid #ccc;
+  background:#f8f8f8;
+  cursor:pointer;
+  border-radius:2px;
+  min-height:44px;
+  min-width:80px;
+}
+.modal-btn:disabled {
+  background: #eee;
+  color: #aaa;
+  cursor: not-allowed;
+}
+.modal-btn.primary { background:#0078d4; color:#fff; border-color:#0078d4; }
 
-    .preview-modal .modal-box { max-width: 95vw; max-height: 90vh; padding:10px; }
-    .preview-img { max-width: 100%; max-height: 75vh; }
+.preview-modal .modal-box { max-width: 95vw; max-height: 90vh; padding:10px; }
+.preview-img { max-width: 100%; max-height: 75vh; }
 
-    .upload-panel {
-      position: fixed;
-      right: 10px;
-      bottom: 10px;
-      width: min(360px, calc(100vw - 20px));
-      background: #fff;
-      border: 1px solid #ccc;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      z-index: 9998;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .upload-head {
-      padding: 10px 12px;
-      background: #f8f8f8;
-      border-bottom: 1px solid #eee;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .upload-close { cursor: pointer; color: #666; padding: 0 6px; min-height:44px; display:flex; align-items:center; }
-    .upload-list { max-height: 220px; overflow-y: auto; }
-    .upload-item {
-      padding: 10px 12px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-    .upload-filename { font-size: 12px; margin-bottom: 6px; word-break: break-all; }
-    .progress-bar {
-      width: 100%;
-      height: 8px;
-      background: #eee;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .progress-inner {
-      height: 100%;
-      width: 0%;
-      background: #0078d4;
-      transition: width 0.1s linear;
-    }
-    .upload-status {
-      font-size: 11px;
-      margin-top: 4px;
-      color: #666;
-    }
-    .status-success { color: #107c10; }
-    .status-error { color: #d83b01; }
+.upload-panel {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  width: min(360px, calc(100vw - 20px));
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  z-index: 9998;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.upload-head {
+  padding: 10px 12px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.upload-close { cursor: pointer; color: #666; padding: 0 6px; min-height:44px; display:flex; align-items:center; }
+.upload-list { max-height: 220px; overflow-y: auto; }
+.upload-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.upload-filename { font-size: 12px; margin-bottom: 6px; word-break: break-all; }
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #eee;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-inner {
+  height: 100%;
+  width: 0%;
+  background: #0078d4;
+  transition: width 0.1s linear;
+}
+.upload-status {
+  font-size: 11px;
+  margin-top: 4px;
+  color: #666;
+}
+.status-success { color: #107c10; }
+.status-error { color: #d83b01; }
 
-    .hidden { display: none !important; }
+.hidden { display: none !important; }
 
-    .loading-modal .modal-box {
-      text-align: center;
-      padding: 30px 20px;
-    }
-    .loading-text {
-      font-size: 14px;
-      color: #333;
-    }
-    .loading-countdown-btn {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: #0078d4;
-      color: #fff;
-      border: none;
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .loading-countdown-btn.timeout {
-      background: #d83b01;
-      font-weight: bold;
-    }
+.loading-modal .modal-box {
+  text-align: center;
+  padding: 30px 20px;
+}
+.loading-text {
+  font-size: 14px;
+  color: #333;
+}
+.loading-countdown-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #0078d4;
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.loading-countdown-btn.timeout {
+  background: #d83b01;
+  font-weight: bold;
+}
 
-    .config-modal { z-index: 10001; }
-    .config-tip {
-      color:#666;
-      font-size:12px;
-      margin:8px 0;
-      line-height:1.5;
-    }
+.config-modal { z-index: 10001; }
+.config-tip {
+  color:#666;
+  font-size:12px;
+  margin:8px 0;
+  line-height:1.5;
+}
 
-    /* 手机端：折叠面板默认隐藏，点击菜单展开 */
-    @media (max-width: 768px) {
-      .menu-toggle { display: block; }
-      .sidebar { width: 0; padding:0; overflow:hidden; border:none; }
-      .sidebar.show { width: 180px; padding:10px; border-right:1px solid #ddd; }
-      .sidebar-toggle { display: block; }
-      .fold-panel { display: none; }
-      .view-group { width:100%; }
-      .breadcrumb { font-size:12px; }
-      .view-icon { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
-      .upload-panel { right:5px; bottom:5px; }
-      .file-area { padding-bottom: 160px; }
-    }
+@media (max-width: 768px) {
+  .menu-toggle { display: block; }
+  .sidebar { width: 0; padding:0; overflow:hidden; border:none; }
+  .sidebar.show { width: 180px; padding:10px; border-right:1px solid #ddd; }
+  .sidebar-toggle { display: block; }
+  .fold-panel { display: none; }
+  .view-group { width:100%; }
+  .breadcrumb { font-size:12px; }
+  .view-icon { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+  .upload-panel { right:5px; bottom:5px; }
+  .file-area { padding-bottom: 160px; }
+}
   </style>
 </head>
 <body>
@@ -801,6 +799,7 @@ async function moveFolder(oldPath, newFolderFullPath) {
   }
 }
 
+// ==================== 名称处理核心函数 ====================
 function getDatePrefix() {
   const d = new Date()
   const y = d.getFullYear()
@@ -808,24 +807,22 @@ function getDatePrefix() {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}-`
 }
-// 界面隐藏日期前缀展示
+// 界面展示去除日期前缀
 function pureName(fullName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(fullName) ? fullName.replace(reg, '') : fullName
 }
-// 【仅新建文件夹专用】生成带日期完整名称
+// 仅新建文件夹自动加日期前缀
 function newFolderAutoPrefix(name) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(name) ? name : getDatePrefix() + name
 }
-// 通用：重命名/复制/移动一律原样返回，不加任何日期
+// 重命名/复制/移动通用：原样返回，不加日期
 function rawNameOnly(name) {
   return name
 }
-function fullName(dispName) {
-  const reg = /^\d{4}-\d{2}-\d{2}-/
-  return reg.test(dispName) ? dispName : getDatePrefix() + dispName
-}
+// ==========================================================
+
 function getFileIcon(type, name) {
   if (type === 'dir') return '📁'
   const ext = name.split('.').pop().toLowerCase()
@@ -1119,7 +1116,7 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
 })
 document.addEventListener('click', hideContextMenu)
 
-// 修复：切换复选框立即刷新列表 + 持久化存储
+// 切换多选/日期前缀 持久化+实时刷新
 document.getElementById('toggleMulti').addEventListener('change', e => {
   if(!checkConfig()) return
   if (uiLocked) return;
@@ -1274,12 +1271,13 @@ document.getElementById('btnNewFolder').addEventListener('click', () => {
 document.getElementById('cancelNew').addEventListener('click', ()=>{
   document.getElementById('newFolderModal').style.display = 'none'
 })
+// 新建文件夹：仅此处自动加日期前缀
 document.getElementById('confirmNew').addEventListener('click', async () => {
   if(!checkConfig()) return
   if (uiLocked || taskRunning) return;
   let name = document.getElementById('newFolderName').value.trim()
   if (!name) return alert('请输入文件夹名称')
-  const fullDirName = fullName(name)
+  const fullDirName = newFolderAutoPrefix(name)
   const targetPath = `${currentPath}/${fullDirName}/.gitkeep`
   document.getElementById('newFolderModal').style.display = 'none'
   startLoading();
@@ -1334,7 +1332,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
           progressInner.style.width = '45%'
           statusText.textContent = '转换Base64并提交请求...'
           const b64 = reader.result.split(',')[1]
-          // 上传文件直接使用原始文件名，不加日期前缀
+          // 上传文件永远使用原始文件名，不加日期
           const targetPath = `${currentPath}/${file.name}`
           let reqProgress = 45
           const timer = setInterval(() => {
@@ -1414,13 +1412,14 @@ function openRename() {
 document.getElementById('cancelRename').addEventListener('click', () => {
   document.getElementById('renameModal').style.display = 'none'
 })
+// 重命名统一不自动加日期，文件/文件夹都原样保存输入名称
 document.getElementById('confirmRename').addEventListener('click', async () => {
   if(!checkConfig()) return
   if (uiLocked || taskRunning) return;
   const newDisp = document.getElementById('renameInput').value.trim()
   if (!newDisp) return
-  const newFullName = fullName(newDisp)
   const oldItem = selectedItems[0]
+  const newFullName = rawNameOnly(newDisp)
   const parentPath = oldItem.path.substring(0, oldItem.path.lastIndexOf('/'))
   const newFullPath = `${parentPath}/${newFullName}`
   document.getElementById('renameModal').style.display = 'none'
@@ -1472,7 +1471,7 @@ document.getElementById('viewList').addEventListener('click', async () => {
   }
 })
 
-// 页面初始化（修复持久化读取开关状态）
+// 页面初始化，读取本地存储的开关配置
 window.onload = async () => {
   const savedRaw = localStorage.getItem(STORAGE_CONFIG)
   if(savedRaw){
