@@ -808,9 +808,19 @@ function getDatePrefix() {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}-`
 }
+// 界面隐藏日期前缀展示
 function pureName(fullName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(fullName) ? fullName.replace(reg, '') : fullName
+}
+// 【仅新建文件夹专用】生成带日期完整名称
+function newFolderAutoPrefix(name) {
+  const reg = /^\d{4}-\d{2}-\d{2}-/
+  return reg.test(name) ? name : getDatePrefix() + name
+}
+// 通用：重命名/复制/移动一律原样返回，不加任何日期
+function rawNameOnly(name) {
+  return name
 }
 function fullName(dispName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
