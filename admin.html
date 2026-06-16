@@ -42,15 +42,13 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
 }
 .fold-panel {
   width: 100%;
-  display: flex; /* PC端默认展示，不再隐藏 */
+  display: none;
   padding-top: 8px;
   border-top: 1px solid #eee;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
 }
-
-
 .fold-panel.show { display: flex; }
 
 .top-bar button {
@@ -388,7 +386,7 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
   line-height:1.5;
 }
 
-/* 媒体查询：手机平板适配 
+/* 媒体查询：手机平板适配 */
 @media (max-width: 768px) {
   .menu-toggle { display: block; }
   .sidebar { width: 0; padding:0; overflow:hidden; border:none; }
@@ -398,18 +396,9 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
   .breadcrumb { font-size:12px; }
   .view-icon { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
   .upload-panel { right:5px; bottom:5px; }
-  /* 手机端增加底部安全间距，避开系统手势条 /
+  /* 手机端增加底部安全间距，避开系统手势条 */
   .file-area {
     padding-bottom: 160px;
-  }
-}*/
-/* 仅手机端默认隐藏，需要点击菜单按钮展开 */
-@media (max-width: 768px) {
-  .fold-panel {
-    display: none;
-  }
-  .fold-panel.show {
-    display: flex;
   }
 }
   </style>
@@ -854,7 +843,6 @@ async function moveFolder(oldPath, newFolderFullPath) {
   }
 }
 
-// 仅新建文件夹时拼接日期前缀
 function getDatePrefix() {
   const d = new Date()
   const y = d.getFullYear()
@@ -862,12 +850,10 @@ function getDatePrefix() {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}-`
 }
-// 去除日期前缀，用于界面展示
 function pureName(fullName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(fullName) ? fullName.replace(reg, '') : fullName
 }
-// 文件夹专用：生成带日期完整名称
 function fullName(dispName) {
   const reg = /^\d{4}-\d{2}-\d{2}-/
   return reg.test(dispName) ? dispName : getDatePrefix() + dispName
@@ -1171,32 +1157,11 @@ document.getElementById('fileArea').addEventListener('contextmenu', e => {
 })
 document.addEventListener('click', hideContextMenu)
 
-// 多选开关
 document.getElementById('toggleMulti').addEventListener('change', e => {
   if(!checkConfig()) return
   if (uiLocked) return;
   multiSelectMode = e.target.checked
-  // 保存到本地
-  if(globalConfig){
-    globalConfig.multiSelectMode = multiSelectMode
-    localStorage.setItem(STORAGE_CONFIG, JSON.stringify(globalConfig))
-  }
   clearAllSelect()
-  refreshCurrentDir()
-})
-
-// 日期前缀开关（修复：勾选后立刻重新渲染列表）
-document.getElementById('toggleDate').addEventListener('change', e => {
-  if(!checkConfig()) return
-  if (uiLocked) return;
-  showDatePrefix = e.target.checked
-  // 保存配置
-  if(globalConfig){
-    globalConfig.showDatePrefix = showDatePrefix
-    localStorage.setItem(STORAGE_CONFIG, JSON.stringify(globalConfig))
-  }
-  clearAllSelect()
-  refreshCurrentDir()
 })
 
 document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDir)
@@ -1530,16 +1495,8 @@ document.getElementById('viewList').addEventListener('click', async () => {
 
 // 页面初始化
 window.onload = async () => {
-  // 读取本地存储，刷新页面不丢失勾选状态
-  const saved = localStorage.getItem(STORAGE_CONFIG);
-  if(saved){
-    const cfg = JSON.parse(saved);
-    if(typeof cfg.showDatePrefix !== 'undefined') showDatePrefix = cfg.showDatePrefix;
-    if(typeof cfg.multiSelectMode !== 'undefined') multiSelectMode = cfg.multiSelectMode;
-  }
-  // 同步勾选框显示状态
-  document.getElementById('toggleDate').checked = showDatePrefix
-  document.getElementById('toggleMulti').checked = multiSelectMode
+  showDatePrefix = document.getElementById('toggleDate').checked
+  multiSelectMode = document.getElementById('toggleMulti').checked
   uploadPanel.classList.add('hidden')
   checkConfig()
 }
