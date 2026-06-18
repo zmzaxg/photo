@@ -296,7 +296,109 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
 .preview-modal .modal-box { max-width: 95vw; max-height: 90vh; padding:10px; }
 .preview-img { max-width: 100%; max-height: 75vh; }
 
-/* 全局统一任务弹窗 替代旧上传面板 */
+.upload-panel {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  width: min(360px, calc(100vw - 20px));
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  z-index: 9998;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.upload-head {
+  padding: 10px 12px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.upload-close { cursor: pointer; color: #666; padding: 0 6px; min-height:44px; display:flex; align-items:center; }
+.upload-list { max-height: 220px; overflow-y: auto; }
+.upload-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.upload-filename { font-size: 12px; margin-bottom: 6px; word-break: break-all; }
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #eee;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-inner {
+  height: 100%;
+  width: 0%;
+  background: #0078d4;
+  transition: width 0.1s linear;
+}
+.upload-status {
+  font-size: 11px;
+  margin-top: 4px;
+  color: #666;
+}
+.status-success { color: #107c10; }
+.status-error { color: #d83b01; }
+
+.hidden { display: none !important; }
+
+.loading-modal .modal-box {
+  text-align: center;
+  padding: 30px 20px;
+}
+.loading-text {
+  font-size: 14px;
+  color: #333;
+}
+.loading-countdown-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #0078d4;
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.loading-countdown-btn.timeout {
+  background: #d83b01;
+  font-weight: bold;
+}
+
+.config-modal { z-index: 10001; }
+.config-tip {
+  color:#666;
+  font-size:12px;
+  margin:8px 0;
+  line-height:1.5;
+}
+
+@media (max-width: 768px) {
+  .menu-toggle { display: block; }
+  .sidebar { width: 0; padding:0; overflow:hidden; border:none; }
+  .sidebar.show { width: 180px; padding:10px; border-right:1px solid #ddd; }
+  .sidebar-toggle { display: block; }
+  .fold-panel { display: none; }
+  .view-group { width:100%; }
+  .breadcrumb { font-size:12px; }
+  .view-icon { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+  .upload-panel { right:5px; bottom:5px; }
+  .file-area { padding-bottom: 160px; }
+}
+
+/* 新增任务面板样式，不改动原有任何样式 */
 .global-task-panel {
   position: fixed;
   top: 50%;
@@ -350,71 +452,6 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
   color:#333;
 }
 .task-del-btn:hover { background:#ddd; }
-.progress-bar {
-  width:100%;
-  height:8px;
-  background:#eee;
-  margin:6px 0;
-}
-.progress-inner {
-  height:100%;
-  background:#007bff;
-  width:0%;
-  transition: width 0.1s linear;
-}
-.upload-status.status-success { color:#090; }
-.upload-status.status-error { color:#d00; }
-
-.hidden { display: none !important; }
-
-.loading-modal .modal-box {
-  text-align: center;
-  padding: 30px 20px;
-}
-.loading-text {
-  font-size: 14px;
-  color: #333;
-}
-.loading-countdown-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #0078d4;
-  color: #fff;
-  border: none;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.loading-countdown-btn.timeout {
-  background: #d83b01;
-  font-weight: bold;
-}
-
-.config-modal { z-index: 10001; }
-.config-tip {
-  color:#666;
-  font-size:12px;
-  margin:8px 0;
-  line-height:1.5;
-}
-
-@media (max-width: 768px) {
-  .menu-toggle { display: block; }
-  .sidebar { width: 0; padding:0; overflow:hidden; border:none; }
-  .sidebar.show { width: 180px; padding:10px; border-right:1px solid #ddd; }
-  .sidebar-toggle { display: block; }
-  .fold-panel { display: none; }
-  .view-group { width:100%; }
-  .breadcrumb { font-size:12px; }
-  .view-icon { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
-  .file-area { padding-bottom: 160px; }
-}
   </style>
 </head>
 <body>
@@ -542,22 +579,42 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
   </div>
 </div>
 
-<!-- 全局统一任务弹窗，所有批量操作共用 -->
-<div id="globalTaskPanel" class="global-task-panel hidden">
-  <div class="task-panel-head">
-    <h4>任务队列</h4>
-    <button id="taskPanelCloseBtn">收起</button>
+<div class="upload-panel" id="uploadPanel">
+  <div class="upload-head">
+    <span>文件上传进度</span>
+    <span class="upload-close" id="uploadPanelClose">×</span>
   </div>
-  <div id="taskListWrap" class="task-list-wrap"></div>
+  <div class="upload-list" id="uploadList"></div>
 </div>
 
 <input type="file" id="fileUpload" multiple accept="image/*" class="hidden">
 
 <script>
+// 新增统一任务模块，原有上传队列变量保留不删除
+const TASK_TYPE_UPLOAD = 'upload';
+const TASK_TYPE_COPY = 'copy';
+const TASK_TYPE_CUT = 'cut';
+const TASK_TYPE_DELETE = 'delete';
+const TASK_TYPE_DOWNLOAD = 'download';
+
+let globalTaskList = [];
+let currentRunningTask = null;
+let taskAbortMap = new Map();
+const taskPanel = document.getElementById('globalTaskPanel');
+const taskListWrap = document.getElementById('taskListWrap');
+const taskPanelCloseBtn = document.getElementById('taskPanelCloseBtn');
+
+taskPanelCloseBtn.addEventListener('click', ()=>{
+  taskPanel.classList.add('hidden');
+});
+
+
+
+
 const STORAGE_CONFIG = 'album_global_config'
 let globalConfig = null
 let currentPath = 'public/albums'
-let viewMode = 'list' // 默认列表视图
+let viewMode = 'list'
 let showDatePrefix = false
 let multiSelectMode = false
 let copyCache = { path: '', name: '', type: '', action: '', list: [] }
@@ -594,24 +651,10 @@ const MAX_LOAD_SECONDS = 10;
 let currentCount = MAX_LOAD_SECONDS;
 const API_DELAY = 300;
 
-// 统一全局任务类型常量
-const TASK_TYPE_UPLOAD = 'upload';
-const TASK_TYPE_COPY = 'copy';
-const TASK_TYPE_CUT = 'cut';
-const TASK_TYPE_DELETE = 'delete';
-const TASK_TYPE_DOWNLOAD = 'download';
-
-// 全局任务管理变量
-let globalTaskList = [];
-let currentRunningTask = null;
-let taskAbortMap = new Map();
-const taskPanel = document.getElementById('globalTaskPanel');
-const taskListWrap = document.getElementById('taskListWrap');
-const taskPanelCloseBtn = document.getElementById('taskPanelCloseBtn');
-
-taskPanelCloseBtn.addEventListener('click', ()=>{
-  taskPanel.classList.add('hidden');
-});
+// 上传队列全局管理
+let uploadQueue = [];
+let currentUploadTask = null;
+let uploadAbortControllers = new Map(); // key: DOM上传项ID, value: AbortController
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -1086,51 +1129,52 @@ async function renderFileList(path) {
         area.appendChild(card)
       })
     } else {
-      area.className = 'file-area'
-      const table = document.createElement('table')
-      table.className = 'view-list'
-      table.innerHTML = `
-        <thead>
-          <tr>
-            <th>预览</th>
-            <th>名称</th>
-            <th>类型</th>
-            <th>大小</th>
-          </tr>
-        </thead>
-        <tbody id="listBody"></tbody>
-      `
-      area.appendChild(table)
-      const tbody = document.getElementById('listBody')
-      all.forEach(item => {
-        const tr = document.createElement('tr')
-        tr.dataset.path = item.path
-        tr.dataset.type = item.type
-        tr.dataset.sha = item.sha
-        const dispName = showDatePrefix ? item.name : pureName(item.name)
-        const typeText = item.type === 'dir' ? '文件夹' : '文件'
-        const sizeText = item.type === 'dir' ? '-' : (item.size / 1024).toFixed(2) + ' KB'
-        
-        let thumbHtml = ''
-        if(item.type === 'dir'){
-          thumbHtml = `<div style="font-size:48px;width:72px;text-align:center;">📁</div>`
-        }else{
-          let imgSrc = item.path
-          if(imgSrc.startsWith('public/')) imgSrc = imgSrc.slice(7)
-          imgSrc = `${location.origin}/${imgSrc}`
-          thumbHtml = `<img class="list-preview-thumb" src="${imgSrc}" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span style="display:none;font-size:36px;">📄</span>`
-        }
-
-        tr.innerHTML = `
-          <td>${thumbHtml}</td>
-          <td>${getFileIcon(item.type, item.name)} ${dispName}</td>
-          <td>${typeText}</td>
-          <td>${sizeText}</td>
-        `
-        bindItemEvent(tr, item)
-        tbody.appendChild(tr)
-      })
+  area.className = 'file-area'
+  const table = document.createElement('table')
+  table.className = 'view-list'
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>预览</th>
+        <th>名称</th>
+        <th>类型</th>
+        <th>大小</th>
+      </tr>
+    </thead>
+    <tbody id="listBody"></tbody>
+  `
+  area.appendChild(table)
+  const tbody = document.getElementById('listBody')
+  all.forEach(item => {
+    const tr = document.createElement('tr')
+    tr.dataset.path = item.path
+    tr.dataset.type = item.type
+    tr.dataset.sha = item.sha
+    const dispName = showDatePrefix ? item.name : pureName(item.name)
+    const typeText = item.type === 'dir' ? '文件夹' : '文件'
+    const sizeText = item.type === 'dir' ? '-' : (item.size / 1024).toFixed(2) + ' KB'
+    
+    // 生成缩略图
+    let thumbHtml = ''
+    if(item.type === 'dir'){
+      thumbHtml = `<div style="font-size:48px;width:72px;text-align:center;">📁</div>`
+    }else{
+      let imgSrc = item.path
+      if(imgSrc.startsWith('public/')) imgSrc = imgSrc.slice(7)
+      imgSrc = `${location.origin}/${imgSrc}`
+      thumbHtml = `<img class="list-preview-thumb" src="${imgSrc}" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span style="display:none;font-size:36px;">📄</span>`
     }
+
+    tr.innerHTML = `
+      <td>${thumbHtml}</td>
+      <td>${getFileIcon(item.type, item.name)} ${dispName}</td>
+      <td>${typeText}</td>
+      <td>${sizeText}</td>
+    `
+    bindItemEvent(tr, item)
+    tbody.appendChild(tr)
+  })
+}
     initDragSelect()
   } catch(e) {
     area.innerHTML = '<p>加载目录失败</p>'
@@ -1228,232 +1272,7 @@ document.getElementById('toggleDate').addEventListener('change', e => {
 
 document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDir)
 
-// 创建单个任务DOM
-function createTaskDom(task) {
-  const div = document.createElement('div');
-  div.className = 'task-item';
-  div.dataset.taskId = task.taskId;
-  let typeLabel = '';
-  switch(task.type){
-    case TASK_TYPE_UPLOAD: typeLabel = '上传'; break;
-    case TASK_TYPE_COPY: typeLabel = '复制'; break;
-    case TASK_TYPE_CUT: typeLabel = '剪切移动'; break;
-    case TASK_TYPE_DELETE: typeLabel = '删除'; break;
-    case TASK_TYPE_DOWNLOAD: typeLabel = '下载'; break;
-  }
-  div.innerHTML = `
-    <div class="task-item-top">
-      <div class="task-filename">[${typeLabel}] ${task.name}</div>
-      <button class="task-del-btn">×</button>
-    </div>
-    <div class="progress-bar"><div class="progress-inner"></div></div>
-    <div class="upload-status">排队中</div>
-  `;
-  const delBtn = div.querySelector('.task-del-btn');
-  const statusEl = div.querySelector('.upload-status');
-  const progressEl = div.querySelector('.progress-inner');
-
-  delBtn.onclick = ()=>{
-    const idx = globalTaskList.findIndex(t=>t.taskId === task.taskId);
-    if(idx === -1) return;
-    const targetTask = globalTaskList[idx];
-    if(targetTask.state === 'pending'){
-      const ctrl = taskAbortMap.get(task.taskId);
-      if(ctrl) ctrl.abort();
-      globalTaskList.splice(idx,1);
-    }
-    if(targetTask.state === 'running'){
-      const ctrl = taskAbortMap.get(task.taskId);
-      if(ctrl) ctrl.abort();
-    }
-    div.remove();
-    taskAbortMap.delete(task.taskId);
-    if(taskListWrap.children.length === 0){
-      taskPanel.classList.add('hidden');
-    }
-  };
-  taskListWrap.appendChild(div);
-  return {
-    dom: div,
-    statusEl,
-    progressEl,
-    delBtn
-  };
-}
-
-// 启动任务调度器
-async function runGlobalTaskQueue() {
-  if(currentRunningTask !== null || globalTaskList.length === 0) return;
-  const task = globalTaskList.find(t=>t.state === 'pending');
-  if(!task) {
-    refreshCurrentDir();
-    currentRunningTask = null;
-    return;
-  }
-  currentRunningTask = task;
-  task.state = 'running';
-  const domWrap = task.domWrap;
-  const statusEl = domWrap.statusEl;
-  const progressEl = domWrap.progressEl;
-  const abortCtrl = new AbortController();
-  taskAbortMap.set(task.taskId, abortCtrl);
-
-  try {
-    switch(task.type) {
-      case TASK_TYPE_UPLOAD:
-        statusEl.textContent = '读取文件中';
-        progressEl.style.width = '40%';
-        const reader = new FileReader();
-        await new Promise((res, rej)=>{
-          reader.onload = res;
-          reader.onerror = rej;
-          reader.readAsDataURL(task.file);
-        });
-        const b64 = reader.result.split(',')[1];
-        progressEl.style.width = '45%';
-        statusEl.textContent = '上传提交中';
-        let fakeProg = 45;
-        const timer = setInterval(()=>{
-          fakeProg += Math.floor(Math.random()*3);
-          if(fakeProg >=90) fakeProg =90;
-          progressEl.style.width = fakeProg+'%';
-          statusEl.textContent = `上传中 ${fakeProg}%`;
-        },80);
-        await githubApiWrite(`${currentPath}/${task.file.name}`, 'PUT', {
-          message: `上传 ${task.file.name}`,
-          content: b64
-        }, abortCtrl.signal);
-        clearInterval(timer);
-        progressEl.style.width = '100%';
-        statusEl.textContent = '已完成';
-        statusEl.className = 'upload-status status-success';
-        task.state = 'done';
-        break;
-
-      case TASK_TYPE_DOWNLOAD:
-        statusEl.textContent = '读取文件';
-        progressEl.style.width = '30%';
-        const resFile = await githubApiRead(task.item.path);
-        progressEl.style.width = '70%';
-        statusEl.textContent = '生成下载';
-        const byteStr = atob(resFile.content);
-        const arr = new Uint8Array([...byteStr].map(c=>c.charCodeAt(0)));
-        const blob = new Blob([arr]);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = task.item.name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(a.href);
-        progressEl.style.width = '100%';
-        statusEl.textContent = '下载完成';
-        statusEl.className = 'upload-status status-success';
-        task.state = 'done';
-        break;
-
-      case TASK_TYPE_DELETE:
-        statusEl.textContent = '删除处理中';
-        progressEl.style.width = '60%';
-        if(task.item.type === 'file'){
-          await githubApiWrite(task.item.path, 'DELETE', {
-            sha: task.item.sha,
-            message: '批量删除文件'
-          }, abortCtrl.signal);
-        }else{
-          await deleteFolder(task.item.path);
-        }
-        progressEl.style.width = '100%';
-        statusEl.textContent = '删除完成';
-        statusEl.className = 'upload-status status-success';
-        task.state = 'done';
-        break;
-
-      case TASK_TYPE_COPY:
-      case TASK_TYPE_CUT:
-        statusEl.textContent = '复制/移动处理';
-        progressEl.style.width = '40%';
-        if(task.item.type === 'file'){
-          const raw = await githubApiRead(task.item.path);
-          const newPath = `${currentPath}/${task.item.name}`;
-          await githubApiWrite(newPath, 'PUT', {
-            message: `批量复制 ${task.item.name}`,
-            content: raw.content
-          }, abortCtrl.signal);
-          if(task.type === TASK_TYPE_CUT){
-            await githubApiWrite(task.item.path, 'DELETE', {sha:task.item.sha, message:'剪切源文件'});
-          }
-        }else{
-          const sourceName = task.item.path.split('/').pop();
-          const targetFull = `${currentPath}/${sourceName}`;
-          if(task.type === TASK_TYPE_CUT){
-            await moveFolder(task.item.path, targetFull);
-          }else{
-            await copyFolder(task.item.path, currentPath);
-          }
-        }
-        progressEl.style.width = '100%';
-        statusEl.textContent = task.type === TASK_TYPE_COPY ? '复制完成' : '移动完成';
-        statusEl.className = 'upload-status status-success';
-        task.state = 'done';
-        break;
-    }
-  } catch (err) {
-    if(err.name === 'AbortError'){
-      statusEl.textContent = '已取消';
-    }else{
-      statusEl.textContent = '失败: ' + err.message;
-      statusEl.className = 'upload-status status-error';
-    }
-    task.state = 'fail';
-  }
-  taskAbortMap.delete(task.taskId);
-  currentRunningTask = null;
-  setTimeout(()=>runGlobalTaskQueue(), 100);
-}
-
-// 添加上传任务
-function addUploadTask(file) {
-  const taskId = Date.now() + Math.random().toString(36);
-  const task = {
-    taskId,
-    type: TASK_TYPE_UPLOAD,
-    name: file.name,
-    file: file,
-    state: 'pending'
-  };
-  task.domWrap = createTaskDom(task);
-  globalTaskList.push(task);
-  taskPanel.classList.remove('hidden');
-  runGlobalTaskQueue();
-}
-
-// 添加批量操作任务：复制/剪切/删除/下载
-function addBatchTask(type, item) {
-  const taskId = Date.now() + Math.random().toString(36);
-  const task = {
-    taskId,
-    type,
-    name: item.name,
-    item: item,
-    state: 'pending'
-  };
-  task.domWrap = createTaskDom(task);
-  globalTaskList.push(task);
-  taskPanel.classList.remove('hidden');
-  runGlobalTaskQueue();
-}
-
-// 文件上传选中事件
-document.getElementById('fileUpload').addEventListener('change', async e => {
-  if(!checkConfig()) return
-  const files = Array.from(e.target.files)
-  if (!files.length) return
-  e.target.value = ''
-  files.forEach(file => addUploadTask(file));
-})
-
-// 右键菜单点击逻辑改造，对接统一任务队列
+// 右键菜单新增下载分支
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
   item.addEventListener('click', async () => {
     if(!checkConfig()) return
@@ -1470,32 +1289,32 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
         document.getElementById('fileUpload').click()
         break
       case 'paste':
-        if(!copyCache.list || copyCache.list.length ===0) {
-          alert('无复制/剪切内容');
-          return;
-        }
-        const pasteType = copyCache.action === 'cut' ? TASK_TYPE_CUT : TASK_TYPE_COPY;
-        copyCache.list.forEach(it=> addBatchTask(pasteType, it));
-        copyCache = { list:[], action:'' };
-        break;
+  if(!copyCache.list || copyCache.list.length ===0) {
+    alert('暂无复制/剪切内容');
+    return;
+  }
+  const pasteType = copyCache.action === 'cut' ? TASK_TYPE_CUT : TASK_TYPE_COPY;
+  copyCache.list.forEach(item=> addBatchTask(pasteType, item));
+  copyCache = { list:[], action:'' };
+        break
       case 'preview':
         if(selectedItems.length) openPreview(selectedItems[0])
         break
       case 'download':
-        selectedItems.forEach(it=>{
-          if(it.type === 'file') addBatchTask(TASK_TYPE_DOWNLOAD, it);
-        })
-        break;
+  selectedItems.forEach(it=>{
+    if(it.type === 'file') addBatchTask(TASK_TYPE_DOWNLOAD, it);
+  })
+        break
       case 'copy':
         if(selectedItems.length) {
           copyCache = { action:'copy', list:[...selectedItems] }
-          alert('已复制，空白处右键粘贴')
+          alert('已复制，空白处右键/长按粘贴')
         }
         break
       case 'cut':
         if(selectedItems.length) {
           copyCache = { action:'cut', list:[...selectedItems] }
-          alert('已剪切，空白处右键粘贴')
+          alert('已剪切，空白处右键/长按粘贴')
         }
         break
       case 'rename':
@@ -1503,9 +1322,9 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
         else alert('仅支持单个项目重命名')
         break
       case 'delete':
-        if(!confirm(`确定删除选中${selectedItems.length}个项目？文件夹内容全部清除`)) return;
-        selectedItems.forEach(it=> addBatchTask(TASK_TYPE_DELETE, it));
-        break;
+  if(!confirm(`确定删除选中${selectedItems.length}个项目？文件夹内所有内容永久清除！`)) return;
+  selectedItems.forEach(it=> addBatchTask(TASK_TYPE_DELETE, it));
+        break
       case 'prop':
         if(selectedItems.length === 1) openProp()
         else alert('仅支持单个文件查看属性')
@@ -1513,6 +1332,231 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
     }
   })
 })
+
+// 文件下载函数
+async function downloadFile(item) {
+  try {
+    const res = await githubApiRead(item.path)
+    const byteStr = atob(res.content)
+    const arr = new Uint8Array([...byteStr].map(c => c.charCodeAt(0)))
+    const blob = new Blob([arr])
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = item.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(a.href)
+  } catch(err) {
+    alert('下载失败：' + err.message)
+  }
+}
+
+async function batchDeleteSelected() {
+  if(!checkConfig()) return
+  if (uiLocked || taskRunning || !selectedItems.length) return
+  const dirItems = selectedItems.filter(i => i.type === 'dir')
+  const fileItems = selectedItems.filter(i => i.type === 'file')
+  let msg = ''
+  if(dirItems.length && fileItems.length) msg = `确定删除${dirItems.length}个文件夹+${fileItems.length}个文件？文件夹内所有内容永久清除！`
+  else if(dirItems.length) msg = `确定删除${dirItems.length}个文件夹？内部所有文件将全部删除！`
+  else msg = `确定删除${fileItems.length}个文件？`
+  if(!confirm(msg)) return
+
+  startLoading();
+  try {
+    for(const f of fileItems){
+      try{
+        await githubApiWrite(f.path, 'DELETE', {sha:f.sha, message:'批量删除文件'})
+      }catch(e){console.error('删除文件失败',f.path,e)}
+      await sleep(API_DELAY)
+    }
+    for(const d of dirItems){
+      await deleteFolder(d.path)
+    }
+    await reloadAllView();
+  } catch (err) {
+    console.error('批量删除异常', err)
+  } finally {
+    fullEndLoading();
+  }
+}
+
+async function doPaste() {
+  if(!checkConfig()) return
+  if (uiLocked || taskRunning || !copyCache.list || !copyCache.list.length) return alert('暂无复制/剪切内容')
+  const isCut = copyCache.action === 'cut'
+  const targetParent = currentPath
+  startLoading();
+  try {
+    for (const item of copyCache.list) {
+      if(item.type === 'file'){
+        const raw = await githubApiRead(item.path)
+        await sleep(API_DELAY)
+        const newPath = `${targetParent}/${item.name}`
+        await githubApiWrite(newPath, 'PUT', { message: `粘贴文件 ${item.name}`, content: raw.content })
+        await sleep(API_DELAY)
+        if(isCut) await githubApiWrite(item.path, 'DELETE', {sha:item.sha, message:'剪切删除源文件'})
+      }else{
+        const sourceFolder = item.path
+        const targetFull = `${targetParent}/${sourceFolder.split('/').pop()}`
+        if(isCut){
+          await moveFolder(sourceFolder, targetFull)
+        }else{
+          await copyFolder(sourceFolder, targetParent)
+        }
+      }
+    }
+    copyCache = { list: [], action: '' }
+    await reloadAllView();
+  } catch (err) {
+    console.error('粘贴异常', err)
+  } finally {
+    fullEndLoading();
+  }
+}
+
+const uploadPanel = document.getElementById('uploadPanel')
+const uploadList = document.getElementById('uploadList')
+document.getElementById('uploadPanelClose').addEventListener('click', ()=>{
+  uploadPanel.classList.add('hidden')
+})
+
+document.getElementById('btnNewFolder').addEventListener('click', () => {
+  if(!checkConfig()) return
+  if (uiLocked) return;
+  document.getElementById('newFolderModal').style.display = 'flex'
+  document.getElementById('newFolderName').value = ''
+  document.getElementById('newFolderName').focus()
+})
+document.getElementById('cancelNew').addEventListener('click', ()=>{
+  document.getElementById('newFolderModal').style.display = 'none'
+})
+// 新建文件夹：仅此处自动加日期前缀
+document.getElementById('confirmNew').addEventListener('click', async () => {
+  if(!checkConfig()) return
+  if (uiLocked || taskRunning) return;
+  let name = document.getElementById('newFolderName').value.trim()
+  if (!name) return alert('请输入文件夹名称')
+  const fullDirName = newFolderAutoPrefix(name)
+  const targetPath = `${currentPath}/${fullDirName}/.gitkeep`
+  document.getElementById('newFolderModal').style.display = 'none'
+  startLoading();
+  try {
+    await githubApiWrite(targetPath, 'PUT', { message: `新建文件夹 ${fullDirName}`, content: '' })
+    alert('创建成功')
+    await reloadAllView();
+  } catch(e) {
+    alert('创建失败')
+    console.error(e)
+  } finally {
+    fullEndLoading();
+  }
+})
+
+document.getElementById('btnUpload').addEventListener('click', () => {
+  if(!checkConfig()) return
+  if (uiLocked) return;
+  document.getElementById('fileUpload').click()
+})
+
+// 多文件串行上传队列逻辑
+document.getElementById('fileUpload').addEventListener('change', async e => {
+  if(!checkConfig()) return
+  const files = Array.from(e.target.files)
+  if (!files.length) return
+  e.target.value = ''
+  files.forEach(file => addUploadTask(file));
+})
+
+async function runUploadQueue() {
+  if(currentUploadTask || uploadQueue.length === 0) return
+  currentUploadTask = uploadQueue.shift()
+  const file = currentUploadTask
+  const uploadItemId = Date.now() + Math.random().toString(36)
+  const abortCtrl = new AbortController()
+  uploadAbortControllers.set(uploadItemId, abortCtrl)
+
+  // 渲染上传项（新增取消按钮）
+  const item = document.createElement('div')
+  item.className = 'upload-item'
+  item.dataset.uid = uploadItemId
+  item.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="upload-filename">${file.name}</div>
+      <button class="upload-cancel-btn" style="color:#d83b01;border:none;background:transparent;cursor:pointer;padding:2px 6px;">取消</button>
+    </div>
+    <div class="progress-bar"><div class="progress-inner"></div></div>
+    <div class="upload-status">准备上传...</div>
+  `
+  uploadList.appendChild(item)
+  const progressInner = item.querySelector('.progress-inner')
+  const statusText = item.querySelector('.upload-status')
+  const cancelBtn = item.querySelector('.upload-cancel-btn')
+
+  // 取消按钮事件
+  cancelBtn.onclick = () => {
+    abortCtrl.abort()
+    statusText.textContent = '已取消'
+    statusText.className = 'upload-status status-error'
+    progressInner.style.width = '0%'
+    uploadAbortControllers.delete(uploadItemId)
+  }
+
+  try {
+    statusText.textContent = '读取文件中...'
+    const reader = new FileReader()
+    reader.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round((ev.loaded / ev.total) * 40)
+        progressInner.style.width = pct + '%'
+        statusText.textContent = `读取文件 ${ev.loaded}/${ev.total} 字节`
+      }
+    }
+    await new Promise((res, rej) => {
+      reader.onload = res
+      reader.onerror = rej
+      reader.readAsDataURL(file)
+    })
+    const b64 = reader.result.split(',')[1]
+    progressInner.style.width = '45%'
+    statusText.textContent = '提交至仓库...'
+    let reqProgress = 45
+    const timer = setInterval(() => {
+      reqProgress += Math.floor(Math.random() * 3)
+      if (reqProgress >= 90) reqProgress = 90
+      progressInner.style.width = reqProgress + '%'
+      statusText.textContent = `上传中 ${reqProgress}%`
+    }, 80)
+    // 上传接口携带中断信号
+    await githubApiWrite(`${currentPath}/${file.name}`, 'PUT', {
+      message: `上传 ${file.name}`,
+      content: b64
+    }, abortCtrl.signal)
+    clearInterval(timer)
+    progressInner.style.width = '100%'
+    statusText.textContent = '上传完成'
+    statusText.className = 'upload-status status-success'
+    uploadAbortControllers.delete(uploadItemId)
+    await sleep(API_DELAY)
+  } catch (err) {
+    if(err.name === 'AbortError') {
+      statusText.textContent = '上传已取消'
+    } else {
+      progressInner.style.width = '0%'
+      statusText.textContent = '上传失败：' + err.message
+      statusText.className = 'upload-status status-error'
+    }
+    uploadAbortControllers.delete(uploadItemId)
+  }
+  currentUploadTask = null
+  // 队列还有任务，继续下一个；无任务再刷新目录
+  if(uploadQueue.length > 0) {
+    runUploadQueue()
+  } else {
+    refreshCurrentDir()
+  }
+}
 
 // 预览修复：移除public/前缀，404兜底API读取base64
 async function openPreview(item) {
@@ -1647,9 +1691,240 @@ window.onload = async () => {
   }
   document.getElementById('toggleDate').checked = showDatePrefix
   document.getElementById('toggleMulti').checked = multiSelectMode
+  uploadPanel.classList.add('hidden')
   checkConfig()
 }
-</script>
 
+// ====================== 新增任务调度函数，原有代码完全不受影响 ======================
+function createTaskDom(task) {
+  const div = document.createElement('div');
+  div.className = 'task-item';
+  div.dataset.taskId = task.taskId;
+  let typeLabel = '';
+  switch(task.type){
+    case TASK_TYPE_UPLOAD: typeLabel = '上传'; break;
+    case TASK_TYPE_COPY: typeLabel = '复制'; break;
+    case TASK_TYPE_CUT: typeLabel = '剪切移动'; break;
+    case TASK_TYPE_DELETE: typeLabel = '删除'; break;
+    case TASK_TYPE_DOWNLOAD: typeLabel = '下载'; break;
+  }
+  div.innerHTML = `
+    <div class="task-item-top">
+      <div class="task-filename">[${typeLabel}] ${task.name}</div>
+      <button class="task-del-btn">×</button>
+    </div>
+    <div class="progress-bar"><div class="progress-inner"></div></div>
+    <div class="upload-status">排队中</div>
+  `;
+  const delBtn = div.querySelector('.task-del-btn');
+  const statusEl = div.querySelector('.upload-status');
+  const progressEl = div.querySelector('.progress-inner');
+
+  delBtn.onclick = ()=>{
+    const idx = globalTaskList.findIndex(t=>t.taskId === task.taskId);
+    if(idx === -1) return;
+    const targetTask = globalTaskList[idx];
+    // 排队中直接移除队列
+    if(targetTask.state === 'pending'){
+      const ctrl = taskAbortMap.get(task.taskId);
+      if(ctrl) ctrl.abort();
+      globalTaskList.splice(idx,1);
+    }
+    // 运行中中断请求
+    if(targetTask.state === 'running'){
+      const ctrl = taskAbortMap.get(task.taskId);
+      if(ctrl) ctrl.abort();
+    }
+    div.remove();
+    taskAbortMap.delete(task.taskId);
+    // 无任务自动隐藏面板
+    if(taskListWrap.children.length === 0){
+      taskPanel.classList.add('hidden');
+    }
+  };
+  taskListWrap.appendChild(div);
+  return {
+    dom: div,
+    statusEl,
+    progressEl,
+    delBtn
+  };
+}
+
+async function runGlobalTaskQueue() {
+  if(currentRunningTask !== null || globalTaskList.length === 0) return;
+  // 取出第一个排队任务
+  const task = globalTaskList.find(t=>t.state === 'pending');
+  if(!task) {
+    // 全部任务完成刷新目录
+    refreshCurrentDir();
+    currentRunningTask = null;
+    return;
+  }
+  currentRunningTask = task;
+  task.state = 'running';
+  const domWrap = task.domWrap;
+  const statusEl = domWrap.statusEl;
+  const progressEl = domWrap.progressEl;
+  const abortCtrl = new AbortController();
+  taskAbortMap.set(task.taskId, abortCtrl);
+
+  try {
+    switch(task.type) {
+      case TASK_TYPE_UPLOAD:
+        statusEl.textContent = '读取文件中';
+        progressEl.style.width = '40%';
+        const reader = new FileReader();
+        await new Promise((res, rej)=>{
+          reader.onload = res;
+          reader.onerror = rej;
+          reader.readAsDataURL(task.file);
+        });
+        const b64 = reader.result.split(',')[1];
+        progressEl.style.width = '45%';
+        statusEl.textContent = '上传提交中';
+        let fakeProg = 45;
+        const timer = setInterval(()=>{
+          fakeProg += Math.floor(Math.random()*3);
+          if(fakeProg >=90) fakeProg =90;
+          progressEl.style.width = fakeProg+'%';
+          statusEl.textContent = `上传中 ${fakeProg}%`;
+        },80);
+        await githubApiWrite(`${currentPath}/${task.file.name}`, 'PUT', {
+          message: `上传 ${task.file.name}`,
+          content: b64
+        }, abortCtrl.signal);
+        clearInterval(timer);
+        progressEl.style.width = '100%';
+        statusEl.textContent = '已完成';
+        statusEl.className = 'upload-status status-success';
+        task.state = 'done';
+        break;
+
+      case TASK_TYPE_DOWNLOAD:
+        statusEl.textContent = '读取文件';
+        progressEl.style.width = '30%';
+        const resFile = await githubApiRead(task.item.path);
+        progressEl.style.width = '70%';
+        statusEl.textContent = '生成下载';
+        const byteStr = atob(resFile.content);
+        const arr = new Uint8Array([...byteStr].map(c=>c.charCodeAt(0)));
+        const blob = new Blob([arr]);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = task.item.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        progressEl.style.width = '100%';
+        statusEl.textContent = '下载完成';
+        statusEl.className = 'upload-status status-success';
+        task.state = 'done';
+        break;
+
+      case TASK_TYPE_DELETE:
+        statusEl.textContent = '删除处理中';
+        progressEl.style.width = '60%';
+        if(task.item.type === 'file'){
+          await githubApiWrite(task.item.path, 'DELETE', {
+            sha: task.item.sha,
+            message: '批量删除文件'
+          }, abortCtrl.signal);
+        }else{
+          await deleteFolder(task.item.path);
+        }
+        progressEl.style.width = '100%';
+        statusEl.textContent = '删除完成';
+        statusEl.className = 'upload-status status-success';
+        task.state = 'done';
+        break;
+
+      case TASK_TYPE_COPY:
+      case TASK_TYPE_CUT:
+        statusEl.textContent = '复制/移动处理';
+        progressEl.style.width = '40%';
+        if(task.item.type === 'file'){
+          const raw = await githubApiRead(task.item.path);
+          const newPath = `${currentPath}/${task.item.name}`;
+          await githubApiWrite(newPath, 'PUT', {
+            message: `批量复制 ${task.item.name}`,
+            content: raw.content
+          }, abortCtrl.signal);
+          if(task.type === TASK_TYPE_CUT){
+            await githubApiWrite(task.item.path, 'DELETE', {sha:task.item.sha, message:'剪切源文件'});
+          }
+        }else{
+          const sourceName = task.item.path.split('/').pop();
+          const targetFull = `${currentPath}/${sourceName}`;
+          if(task.type === TASK_TYPE_CUT){
+            await moveFolder(task.item.path, targetFull);
+          }else{
+            await copyFolder(task.item.path, currentPath);
+          }
+        }
+        progressEl.style.width = '100%';
+        statusEl.textContent = task.type === TASK_TYPE_COPY ? '复制完成' : '移动完成';
+        statusEl.className = 'upload-status status-success';
+        task.state = 'done';
+        break;
+    }
+  } catch (err) {
+    if(err.name === 'AbortError'){
+      statusEl.textContent = '已取消';
+    }else{
+      statusEl.textContent = '失败: ' + err.message;
+      statusEl.className = 'upload-status status-error';
+    }
+    task.state = 'fail';
+  }
+  taskAbortMap.delete(task.taskId);
+  currentRunningTask = null;
+  // 延迟执行下一个任务
+  setTimeout(()=>runGlobalTaskQueue(), 100);
+}
+
+// 添加上传任务进入队列
+function addUploadTask(file) {
+  const taskId = Date.now() + Math.random().toString(36);
+  const task = {
+    taskId,
+    type: TASK_TYPE_UPLOAD,
+    name: file.name,
+    file: file,
+    state: 'pending'
+  };
+  task.domWrap = createTaskDom(task);
+  globalTaskList.push(task);
+  taskPanel.classList.remove('hidden');
+  runGlobalTaskQueue();
+}
+
+// 添加批量操作任务（复制/剪切/删除/下载）
+function addBatchTask(type, item) {
+  const taskId = Date.now() + Math.random().toString(36);
+  const task = {
+    taskId,
+    type,
+    name: item.name,
+    item: item,
+    state: 'pending'
+  };
+  task.domWrap = createTaskDom(task);
+  globalTaskList.push(task);
+  taskPanel.classList.remove('hidden');
+  runGlobalTaskQueue();
+}
+</script>
+<!-- 新增统一任务弹窗，原有上传面板保留不修改 -->
+<div id="globalTaskPanel" class="global-task-panel hidden">
+  <div class="task-panel-head">
+    <h4>任务队列</h4>
+    <button id="taskPanelCloseBtn">收起</button>
+  </div>
+  <div id="taskListWrap" class="task-list-wrap"></div>
+</div>
 </body>
 </html>
+
+
