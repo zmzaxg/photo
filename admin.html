@@ -208,13 +208,23 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
 .view-list { width:100%; border-collapse: collapse; }
 .view-list th, .view-list td {
   border: 1px solid #eee;
-  padding: 10px 6px;
+  padding: 14px 10px;
   text-align: left;
-  font-size:12px;
+  font-size:13px;
+  vertical-align: middle;
 }
 .view-list th { background:#f8f8f8; }
+.view-list tr { min-height: 90px; }
 .view-list tr:hover { background:#e5f3ff; }
 .view-list tr.selected { background:#cce8ff; }
+.list-preview-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #f5f5f5;
+  border:1px solid #ddd;
+  margin-right:10px;
+}
 
 .context-menu {
   position: fixed;
@@ -528,7 +538,7 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
 const STORAGE_CONFIG = 'album_global_config'
 let globalConfig = null
 let currentPath = 'public/albums'
-let viewMode = 'icon'
+let viewMode = 'list'
 let showDatePrefix = false
 let multiSelectMode = false
 let copyCache = { path: '', name: '', type: '', action: '', list: [] }
@@ -1043,32 +1053,52 @@ async function renderFileList(path) {
         area.appendChild(card)
       })
     } else {
-      area.className = 'file-area'
-      const table = document.createElement('table')
-      table.className = 'view-list'
-      table.innerHTML = `
-        <thead><tr><th>名称</th><th>类型</th><th>大小</th></tr></thead>
-        <tbody id="listBody"></tbody>
-      `
-      area.appendChild(table)
-      const tbody = document.getElementById('listBody')
-      all.forEach(item => {
-        const tr = document.createElement('tr')
-        tr.dataset.path = item.path
-        tr.dataset.type = item.type
-        tr.dataset.sha = item.sha
-        const dispName = showDatePrefix ? item.name : pureName(item.name)
-        const typeText = item.type === 'dir' ? '文件夹' : '文件'
-        const sizeText = item.type === 'dir' ? '-' : (item.size / 1024).toFixed(2) + ' KB'
-        tr.innerHTML = `
-          <td>${getFileIcon(item.type, item.name)} ${dispName}</td>
-          <td>${typeText}</td>
-          <td>${sizeText}</td>
-        `
-        bindItemEvent(tr, item)
-        tbody.appendChild(tr)
-      })
+  area.className = 'file-area'
+  const table = document.createElement('table')
+  table.className = 'view-list'
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>预览</th>
+        <th>名称</th>
+        <th>类型</th>
+        <th>大小</th>
+      </tr>
+    </thead>
+    <tbody id="listBody"></tbody>
+  `
+  area.appendChild(table)
+  const tbody = document.getElementById('listBody')
+  all.forEach(item => {
+    const tr = document.createElement('tr')
+    tr.dataset.path = item.path
+    tr.dataset.type = item.type
+    tr.dataset.sha = item.sha
+    const dispName = showDatePrefix ? item.name : pureName(item.name)
+    const typeText = item.type === 'dir' ? '文件夹' : '文件'
+    const sizeText = item.type === 'dir' ? '-' : (item.size / 1024).toFixed(2) + ' KB'
+    
+    // 生成缩略图
+    let thumbHtml = ''
+    if(item.type === 'dir'){
+      thumbHtml = `<div style="font-size:48px;width:72px;text-align:center;">📁</div>`
+    }else{
+      let imgSrc = item.path
+      if(imgSrc.startsWith('public/')) imgSrc = imgSrc.slice(7)
+      imgSrc = `${location.origin}/${imgSrc}`
+      thumbHtml = `<img class="list-preview-thumb" src="${imgSrc}" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span style="display:none;font-size:36px;">📄</span>`
     }
+
+    tr.innerHTML = `
+      <td>${thumbHtml}</td>
+      <td>${getFileIcon(item.type, item.name)} ${dispName}</td>
+      <td>${typeText}</td>
+      <td>${sizeText}</td>
+    `
+    bindItemEvent(tr, item)
+    tbody.appendChild(tr)
+  })
+}
     initDragSelect()
   } catch(e) {
     area.innerHTML = '<p>加载目录失败</p>'
