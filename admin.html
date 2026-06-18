@@ -835,7 +835,7 @@ async function githubApiWrite(path, method = 'PUT', body = null, signal = null) 
   }
   if(body) opt.body = JSON.stringify(body)
   const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, opt)
-  if (!res.ok) throw new Error('请求失败')
+  if (!res.ok) throw new Error('接口请求失败')
   return res.json()
 }
 
@@ -1404,7 +1404,7 @@ async function downloadFile(item) {
   }
 }
 
-// ===================== 批量任务核心函数（修复复制/剪切0KB损坏） =====================
+// ===================== 批量任务核心函数（修复跨域Failed to fetch + 文件0KB损坏） =====================
 function addBatchTask(type, item) {
   const tid = Date.now() + Math.random().toString(36)
   const task = {
@@ -1503,13 +1503,15 @@ function checkBatchAllDone(){
   }
 }
 
-// 下载单个文件（原有逻辑不变）
+// 文件下载（改用API读取base64，规避download_url跨域）
 async function batchDownloadSingle(item, progressDom, signal){
   progressDom.style.width = '20%'
-  const {download_url} = await githubApiRead(item.path, signal)
+  const fileMeta = await githubApiRead(item.path, signal)
   progressDom.style.width = '40%'
-  const res = await fetch(download_url, {signal})
-  const blob = await res.blob()
+  const rawB64 = fileMeta.content
+  const byteStr = atob(rawB64)
+  const arr = new Uint8Array([...byteStr].map(c => c.charCodeAt(0)))
+  const blob = new Blob([arr])
   progressDom.style.width = '80%'
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
@@ -1521,7 +1523,7 @@ async function batchDownloadSingle(item, progressDom, signal){
   progressDom.style.width = '100%'
 }
 
-// 删除文件/文件夹（原有逻辑不变）
+// 删除文件/文件夹
 async function batchDeleteSingle(item, progressDom, signal){
   progressDom.style.width = '20%'
   if(item.type === 'file'){
@@ -1532,55 +1534,44 @@ async function batchDeleteSingle(item, progressDom, signal){
   progressDom.style.width = '100%'
 }
 
-// 【修复】复制单个对象：下载二进制 → 上传目标目录，彻底解决0KB损坏
+// 复制逻辑：纯官方Contents API读取完整base64，无跨域、无0KB损坏
 async function batchCopySingle(item, progressDom, signal){
   const targetParent = currentPath
   if(item.type === 'file'){
-    // 1. 获取官方下载地址
     progressDom.style.width = '15%'
+    // 官方接口读取完整文件base64，不走download_url
     const fileMeta = await githubApiRead(item.path, signal)
-    const downloadUrl = fileMeta.download_url
-    progressDom.style.width = '30%'
-    // 2. 完整下载二进制Blob
-    const fetchRes = await fetch(downloadUrl, {signal})
-    const blob = await fetchRes.blob()
+    const fileBase64 = fileMeta.content
     progressDom.style.width = '50%'
-    // 3. Blob转base64上传
-    const b64 = await blobToBase64(blob)
     const newPath = `${targetParent}/${item.name}`
     progressDom.style.width = '70%'
     await githubApiWrite(newPath, 'PUT', {
       message: `复制文件 ${item.name}`,
-      content: b64.split(',')[1]
+      content: fileBase64
     }, signal)
     progressDom.style.width = '100%'
   }else{
-    // 文件夹：递归复制内部所有文件
     progressDom.style.width = '10%'
     await copyFolderSafe(item.path, targetParent, progressDom, signal)
     progressDom.style.width = '100%'
   }
 }
 
-// 【修复】剪切单个对象：下载→上传完成后删除源文件
+// 剪切逻辑：先完整复制，成功后删除源文件
 async function batchCutSingle(item, progressDom, signal){
   const targetParent = currentPath
   if(item.type === 'file'){
     progressDom.style.width = '15%'
     const fileMeta = await githubApiRead(item.path, signal)
-    const downloadUrl = fileMeta.download_url
-    progressDom.style.width = '30%'
-    const fetchRes = await fetch(downloadUrl, {signal})
-    const blob = await fetchRes.blob()
+    const fileBase64 = fileMeta.content
     progressDom.style.width = '50%'
-    const b64 = await blobToBase64(blob)
     const newPath = `${targetParent}/${item.name}`
     progressDom.style.width = '70%'
     await githubApiWrite(newPath, 'PUT', {
       message: `剪切文件 ${item.name}`,
-      content: b64.split(',')[1]
+      content: fileBase64
     }, signal)
-    // 上传成功再删源文件
+    // 上传成功再删除源文件
     progressDom.style.width = '85%'
     await githubApiWrite(item.path, 'DELETE', {sha:fileMeta.sha, message:'剪切删除源文件'}, signal)
     progressDom.style.width = '100%'
@@ -1588,50 +1579,37 @@ async function batchCutSingle(item, progressDom, signal){
     progressDom.style.width = '10%'
     await copyFolderSafe(item.path, targetParent, progressDom, signal)
     progressDom.style.width = '80%'
-    // 全部子文件复制完成后删除原文件夹
     await deleteFolder(item.path, signal)
     progressDom.style.width = '100%'
   }
 }
 
-// 安全复制文件夹：递归下载+上传，实时更新进度
+// 文件夹递归安全复制（全程使用官方content字段，无跨域）
 async function copyFolderSafe(sourcePath, targetDirPath, progressDom, signal){
   const list = await githubApiRead(sourcePath, signal)
   const sourceFolderName = sourcePath.split('/').pop()
-  let total = list.length
-  let done = 0
-  for (const fileItem of list) {
+  const total = list.length
+  let doneCount = 0
+  for (const entry of list) {
     if(signal.aborted) throw new Error('任务取消')
-    if(fileItem.type === 'file'){
-      const meta = await githubApiRead(fileItem.path, signal)
-      const blobRes = await fetch(meta.download_url, {signal})
-      const blob = await blobRes.blob()
-      const b64 = await blobToBase64(blob)
-      const newFilePath = `${targetDirPath}/${sourceFolderName}/${fileItem.name}`
+    if(entry.type === 'file'){
+      const meta = await githubApiRead(entry.path, signal)
+      const newFilePath = `${targetDirPath}/${sourceFolderName}/${entry.name}`
       await githubApiWrite(newFilePath, 'PUT', {
-        message: `复制文件夹内文件 ${fileItem.name}`,
-        content: b64.split(',')[1]
+        message: `复制文件夹内文件 ${entry.name}`,
+        content: meta.content
       }, signal)
-    }else if(fileItem.type === 'dir'){
-      await copyFolderSafe(fileItem.path, `${targetDirPath}/${sourceFolderName}`, progressDom, signal)
+    }else if(entry.type === 'dir'){
+      await copyFolderSafe(entry.path, `${targetDirPath}/${sourceFolderName}`, progressDom, signal)
     }
-    done++
-    const pct = 10 + Math.floor((done / total) * 80)
+    doneCount++
+    const pct = 10 + Math.floor((doneCount / total) * 80)
     progressDom.style.width = pct + '%'
     await sleep(API_DELAY)
   }
 }
 
-// Blob 转 base64 工具函数
-function blobToBase64(blob) {
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.readAsDataURL(blob)
-  })
-}
-
-// 改造 githubApiRead 支持 AbortSignal
+// 改造：githubApiRead 支持中断信号，仅读取官方content，废弃download_url
 async function githubApiRead(path, signal) {
   const { owner, repo } = parseRepo()
   const timestamp = Date.now()
@@ -1644,28 +1622,28 @@ async function githubApiRead(path, signal) {
     headers,
     signal
   })
-  if (!res.ok) throw new Error('请求失败')
+  if (!res.ok) throw new Error('接口请求失败')
   return res.json()
 }
 
-// 改造 deleteFolder 支持中断信号
+// 删除文件夹兼容中断信号
 async function deleteFolder(folderPath, signal) {
-  const allFiles = await githubApiRead(folderPath, signal)
-  if (allFiles.length === 0) {
+  const allEntries = await githubApiRead(folderPath, signal)
+  if (allEntries.length === 0) {
     alert('文件夹无文件，无法删除')
     return false
   }
   let failCount = 0
-  for (const file of allFiles) {
+  for (const entry of allEntries) {
     if(signal.aborted) throw new Error('任务取消')
     try {
-      await githubApiWrite(file.path, 'DELETE', {
-        sha: file.sha,
-        message: `删除目录文件: ${file.path}`
+      await githubApiWrite(entry.path, 'DELETE', {
+        sha: entry.sha,
+        message: `删除目录文件: ${entry.path}`
       }, signal)
     } catch (err) {
       failCount++
-      console.error('删除文件失败', file.path, err)
+      console.error('删除失败', entry.path, err)
     }
     await sleep(API_DELAY)
   }
