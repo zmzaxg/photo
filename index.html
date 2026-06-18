@@ -12,7 +12,8 @@
     .date-switch { font-size:14px; }
     h1 { color: #333; font-size:24px; }
 
-    .back-row { margin-bottom:20px; display:none; }
+    /* 返回栏永久可见 */
+    .back-row { margin-bottom:20px; display:block; }
     .back-btn {
       padding: 8px 16px;
       background: #2563eb;
@@ -23,15 +24,15 @@
       font-size: 14px;
     }
 
-    /* 首页/子目录 文件夹列表通用样式 */
-    .album-list {
+    /* 统一网格：文件夹 + 图片卡片共用布局 */
+    .mixed-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 24px;
       max-width: 1400px;
       margin: 0 auto;
     }
-    .album-item {
+    .dir-item, .photo-item {
       background: #fff;
       border-radius: 8px;
       overflow: hidden;
@@ -39,52 +40,22 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       transition: transform 0.2s;
     }
-    .album-item:hover { transform: translateY(-4px); }
-    .album-thumb {
+    .dir-item:hover, .photo-item:hover { transform: translateY(-4px); }
+    .grid-thumb {
       width: 100%;
       height: 150px;
       object-fit: cover;
       display: block;
     }
-    .album-name {
+    .grid-name {
       padding: 12px;
       text-align: center;
       color: #444;
       font-size: 14px;
+      word-break: break-all;
     }
 
-    /* 相册内图片缩略图列表 */
-    .photo-grid-page { display: none; max-width:1400px; margin:0 auto; }
-    .photo-grid-title { margin-bottom:20px; font-size:18px; color:#333; }
-    .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap:16px;
-    }
-    .photo-card {
-      background:#fff;
-      border-radius:8px;
-      overflow:hidden;
-      box-shadow:0 2px 6px rgba(0,0,0,0.08);
-      cursor:pointer;
-      transition:transform 0.2s;
-    }
-    .photo-card:hover { transform: translateY(-3px); }
-    .photo-card-thumb {
-      width:100%;
-      height:120px;
-      object-fit:cover;
-      display:block;
-    }
-    .photo-fullname {
-      padding:8px;
-      font-size:12px;
-      color:#555;
-      text-align:center;
-      word-break:break-all;
-    }
-
-    /* 单图详情页 */
+    /* 大图详情页 */
     .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
     .img-wrapper {
       position: relative;
@@ -137,23 +108,17 @@
     </div>
   </div>
 
-  <!-- 返回按钮通用 -->
+  <!-- 返回按钮永久显示 -->
   <div class="back-row" id="backRow">
     <button class="back-btn" id="backBtn">← 返回上一级</button>
   </div>
 
-  <!-- 文件夹列表页（根目录/任意层级子目录） -->
-  <div id="folderListPage">
-    <div class="album-list" id="folderList"></div>
+  <!-- 混合页面：同时展示子文件夹 + 图片 -->
+  <div id="mixedPage">
+    <div class="mixed-grid" id="mixedGrid"></div>
   </div>
 
-  <!-- 当前目录下图片缩略图列表 -->
-  <div id="photoGridPage" class="photo-grid-page">
-    <div class="photo-grid-title" id="photoGridTitle"></div>
-    <div class="photo-grid" id="photoGrid"></div>
-  </div>
-
-  <!-- 第三层：单张图片详情大图预览 -->
+  <!-- 大图详情页 -->
   <div id="detailPage" class="detail-container">
     <div class="img-wrapper">
       <img id="previewImg" class="preview-img" alt="预览图">
@@ -177,82 +142,69 @@
     const ALBUM_BASE = '/albums/'
     const THUMB_SIZE = { w: 200, h: 150 }
     let showDate = false
-    let currentDirPath = '' // 当前浏览的完整目录路径，多级存储
+    let currentDirPath = ''
 
-    // DOM节点缓存
-    const folderListPage = document.getElementById('folderListPage')
-    const photoGridPage = document.getElementById('photoGridPage')
+    // DOM缓存
+    const mixedPage = document.getElementById('mixedPage')
     const detailPage = document.getElementById('detailPage')
     const backRow = document.getElementById('backRow')
     const backBtn = document.getElementById('backBtn')
-    const folderList = document.getElementById('folderList')
-    const photoGrid = document.getElementById('photoGrid')
-    const photoGridTitle = document.getElementById('photoGridTitle')
+    const mixedGrid = document.getElementById('mixedGrid')
     const previewImg = document.getElementById('previewImg')
     const imgLink = document.getElementById('imgLink')
     const copyLink = document.getElementById('copyLink')
     const detailFileName = document.getElementById('detailFileName')
     const homeToggleDate = document.getElementById('homeToggleDate')
 
-    // 全局目录树缓存：{ 完整路径: { isDir:布尔, children:[子路径], files:[图片名] } }
+    // 全局目录树
     let dirTree = new Map()
-    // 顶层预加载全部图片路径（递归匹配多级目录）
     const allImagePaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
     const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
 
-    // 工具：去除日期前缀，获取纯文件夹名
+    // 去除日期前缀
     function pureDirName(fullName) {
       const match = fullName.match(FOLDER_DATE_REG)
       return match ? match[2] : fullName
     }
 
-    // 工具：拼接完整访问URL
+    // 拼接资源完整URL
     function getAssetUrl(dirPath, fileName) {
       const safeDir = dirPath ? dirPath + '/' : ''
       return ALBUM_BASE + safeDir + fileName
     }
 
-    // 构建完整多级目录树（递归解析所有图片路径）
+    // 构建完整多级目录树
     function buildDirectoryTree() {
       dirTree.clear()
-      // 初始化根目录
       dirTree.set('', { isDir: true, children: [], files: [] })
 
       for (const globPath of allImagePaths) {
-        // 剥离 /public/albums/ 前缀，得到相对根目录的分层路径
         const relFull = globPath.replace('/public/albums/', '')
         const pathSegments = relFull.split('/')
-        const fileName = pathSegments.pop() // 最后一段是图片文件名
+        const fileName = pathSegments.pop()
         let tempPath = ''
 
-        // 逐层创建目录节点
         for (let segIdx = 0; segIdx < pathSegments.length; segIdx++) {
           const seg = pathSegments[segIdx]
           const parentPath = tempPath
           tempPath = tempPath ? tempPath + '/' + seg : seg
 
-          // 当前目录不存在则新建
           if (!dirTree.has(tempPath)) {
             dirTree.set(tempPath, { isDir: true, children: [], files: [] })
-            // 父目录添加子目录记录
             dirTree.get(parentPath).children.push(tempPath)
           }
         }
-        // 将图片归入最终目录的files数组
         dirTree.get(tempPath).files.push(fileName)
       }
-      console.log('多级目录树构建完成', dirTree)
     }
 
-    // 工具：获取当前目录下「第一张可用缩略图URL」（仅本级，不越级子目录）
+    // 获取目录首张预览图（递归第一个子目录取图，不越级）
     function getDirFirstThumb(dirPath) {
       const node = dirTree.get(dirPath)
       if (!node) return null
-      // 优先取当前目录内图片第一张
       if (node.files.length > 0) {
         return getAssetUrl(dirPath, node.files[0])
       }
-      // 当前目录无图片，取第一个子目录内第一张图
       for (const childDir of node.children) {
         const childThumb = getDirFirstThumb(childDir)
         if (childThumb) return childThumb
@@ -260,54 +212,41 @@
       return null
     }
 
-    // 解析哈希路由，支持多级目录路径编码
+    // 解析hash路由
     function parseHash() {
       const hash = location.hash.slice(1)
       const params = new URLSearchParams(hash)
       return {
-        dir: params.get('dir') || '', // 多级目录完整路径，空=根目录
-        photo: params.get('photo')    // 有值则打开大图详情
+        dir: params.get('dir') || '',
+        photo: params.get('photo')
       }
     }
 
-    // 页面总切换逻辑：区分目录列表/图片列表/大图详情
+    // 页面切换总逻辑
     function switchPage({ dir, photo }) {
-      // 全部页面隐藏、返回按钮默认隐藏
-      folderListPage.style.display = 'none'
-      photoGridPage.style.display = 'none'
+      mixedPage.style.display = 'none'
       detailPage.style.display = 'none'
-      backRow.style.display = 'none'
       currentDirPath = dir
 
       if (photo) {
-        // 层级3：单图详情
-        backRow.style.display = 'block'
+        // 打开大图详情
         detailPage.style.display = 'block'
         loadPhotoDetail(dir, photo)
       } else {
-        const dirNode = dirTree.get(dir)
-        if (!dirNode) return
-        if (dirNode.files.length > 0) {
-          // 层级2：当前目录存在图片，渲染图片网格
-          backRow.style.display = !!dir
-          photoGridPage.style.display = 'block'
-          renderPhotoGrid(dir)
-        } else {
-          // 层级1：仅存在子文件夹，渲染目录列表
-          folderListPage.style.display = 'block'
-          renderFolderList(dir)
-        }
+        // 显示当前目录：文件夹+图片混合网格
+        mixedPage.style.display = 'block'
+        renderMixedGrid(dir)
       }
     }
 
-    // 返回上一级目录逻辑
+    // 返回上一级：逐级回退，直到首页
     backBtn.addEventListener('click', () => {
       const { photo, dir } = parseHash()
       if (photo) {
-        // 从大图返回当前目录页面
+        // 从大图退回目录页
         location.hash = dir ? `dir=${encodeURIComponent(dir)}` : ''
       } else {
-        // 从子目录返回父级目录
+        // 目录页回退父级，空路径就是首页
         if (!dir) return
         const segList = dir.split('/')
         segList.pop()
@@ -316,17 +255,17 @@
       }
     })
 
-    // 复制图片链接
+    // 复制链接
     copyLink.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(imgLink.value)
         alert('复制成功')
-      } catch (err) {
-        alert('复制失败，请手动复制输入框内链接')
+      } catch {
+        alert('复制失败，请手动复制')
       }
     })
 
-    // Canvas生成统一200*150缩略图
+    // 生成200*150缩略图
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -341,15 +280,14 @@
         ctx.drawImage(img, x, y, drawW, drawH)
         callback(canvas.toDataURL('image/jpeg', 0.8))
       }
-      // 兜底占位图
       img.onerror = () => {
-        const svg = `<svg width="${THUMB_SIZE.w}" height="${THUMB_SIZE.h}"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">无预览图</text></svg>`
+        const svg = `<svg width="${THUMB_SIZE.w}" height="${THUMB_SIZE.h}"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">无预览</text></svg>`
         callback(`data:image/svg+xml;utf8,${svg}`)
       }
       img.src = imgSrc
     }
 
-    // 解析图片EXIF信息
+    // 解析EXIF
     function parseExif(imgUrl) {
       return new Promise(resolve => {
         const img = new Image()
@@ -383,7 +321,7 @@
       })
     }
 
-    // 大图拖拽缩放重置
+    // 大图拖拽缩放
     let scale = 1, isDrag = false, moveX = 0, moveY = 0
     function initDragZoom() {
       scale = 1; moveX = 0; moveY = 0
@@ -408,7 +346,7 @@
       }
     }
 
-    // 加载单张大图详情
+    // 加载大图详情
     async function loadPhotoDetail(dirPath, photoName) {
       const fullAssetUrl = getAssetUrl(dirPath, photoName)
       imgLink.value = location.origin + fullAssetUrl
@@ -422,78 +360,70 @@
       document.getElementById('exifGps').innerText = exifData.gpsStr
     }
 
-    // 渲染当前目录的子文件夹列表（多级目录页）
-    function renderFolderList(dirPath) {
-      folderList.innerHTML = ''
+    // 核心渲染：同一网格同时渲染【子文件夹】+【图片】
+    function renderMixedGrid(dirPath) {
+      mixedGrid.innerHTML = ''
       const node = dirTree.get(dirPath)
       const childDirs = node.children
-      if (childDirs.length === 0) {
-        folderList.innerHTML = '<div class="empty-tip">当前目录无任何子相册文件夹</div>'
+      const photoFiles = node.files
+
+      // 空目录提示
+      if (childDirs.length === 0 && photoFiles.length === 0) {
+        mixedGrid.innerHTML = '<div class="empty-tip">当前目录无文件夹、无图片</div>'
         return
       }
+
+      // 1. 先渲染所有子文件夹卡片（可进入二级/三级相册）
       for (const childFullPath of childDirs) {
-        // 提取当前层级文件夹名称
         const segArr = childFullPath.split('/')
         const dirShortName = segArr[segArr.length - 1]
         const displayName = showDate ? dirShortName : pureDirName(dirShortName)
         const thumbUrl = getDirFirstThumb(childFullPath)
 
         const item = document.createElement('div')
-        item.className = 'album-item'
+        item.className = 'dir-item'
         createThumbnail(thumbUrl, thumbData => {
-          item.innerHTML = `<img class="album-thumb" src="${thumbData}"><div class="album-name">${displayName}</div>`
+          item.innerHTML = `<img class="grid-thumb" src="${thumbData}"><div class="grid-name">📁 ${displayName}</div>`
         })
-        // 点击进入子目录
+        // 点击文件夹 = 进入下一级目录
         item.addEventListener('click', () => {
           location.hash = `dir=${encodeURIComponent(childFullPath)}`
         })
-        folderList.appendChild(item)
+        mixedGrid.appendChild(item)
       }
-    }
 
-    // 渲染当前目录下所有图片网格
-    function renderPhotoGrid(dirPath) {
-      photoGrid.innerHTML = ''
-      const node = dirTree.get(dirPath)
-      // 生成页面标题（完整路径展示）
-      const displayDirName = dirPath.split('/').map(seg => showDate ? seg : pureDirName(seg)).join(' / ')
-      photoGridTitle.innerText = `当前相册：${displayDirName}（共${node.files.length}张图片）`
-
-      if (node.files.length === 0) {
-        photoGrid.innerHTML = '<div class="empty-tip">该目录内暂无图片文件</div>'
-        return
-      }
-      for (const fileName of node.files) {
+      // 2. 再渲染当前目录所有图片卡片（点击打开原图详情）
+      for (const fileName of photoFiles) {
         const imgSrc = getAssetUrl(dirPath, fileName)
         const card = document.createElement('div')
-        card.className = 'photo-card'
+        card.className = 'photo-item'
         createThumbnail(imgSrc, thumbData => {
           card.innerHTML = `
-            <img class="photo-card-thumb" src="${thumbData}">
-            <div class="photo-fullname">${fileName}</div>
+            <img class="grid-thumb" src="${thumbData}">
+            <div class="grid-name">🖼️ ${fileName}</div>
           `
         })
-        // 点击打开大图详情
+        // 点击图片 = 打开大图详情页
         card.addEventListener('click', () => {
           location.hash = `dir=${encodeURIComponent(dirPath)}&photo=${encodeURIComponent(fileName)}`
         })
-        photoGrid.appendChild(card)
+        mixedGrid.appendChild(card)
       }
     }
 
-    // 切换日期显示复选框，重新渲染当前页面
+    // 切换日期显示
     homeToggleDate.addEventListener('change', e => {
       showDate = e.target.checked
       switchPage(parseHash())
     })
 
-    // 监听hash变化（浏览器前进后退、页面跳转）
+    // 浏览器前进后退监听
     window.addEventListener('hashchange', () => switchPage(parseHash()))
 
-    // 页面初始化入口
+    // 页面初始化
     window.onload = () => {
       showDate = homeToggleDate.checked
-      buildDirectoryTree() // 一次性构建完整多级目录树
+      buildDirectoryTree()
       switchPage(parseHash())
     }
   </script>
