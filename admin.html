@@ -435,6 +435,7 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
   <div class="menu-item" data-action="upload">上传文件</div>
   <div class="menu-divider"></div>
   <div class="menu-item item-only" data-action="preview">预览</div>
+  <div class="menu-item item-only" data-action="download">下载文件</div>
   <div class="menu-item item-only" data-action="copy">复制</div>
   <div class="menu-item item-only" data-action="cut">剪切</div>
   <div class="menu-item item-only" data-action="rename">重命名</div>
@@ -564,6 +565,11 @@ const MAX_LOAD_SECONDS = 10;
 let currentCount = MAX_LOAD_SECONDS;
 const API_DELAY = 300;
 
+// 上传队列全局管理
+let uploadQueue = [];
+let currentUploadTask = null;
+let uploadAbortControllers = new Map(); // key: DOM上传项ID, value: AbortController
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -685,17 +691,19 @@ async function githubApiRead(path) {
   return res.json()
 }
 
-async function githubApiWrite(path, method = 'PUT', body = null) {
+async function githubApiWrite(path, method = 'PUT', body = null, signal = null) {
   const { owner, repo } = parseRepo()
   const headers = {
     'Authorization': `token ${globalConfig.githubToken}`,
     'Accept': 'application/vnd.github.v3+json'
   }
-  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+  const opt = {
     method,
     headers,
-    body: body ? JSON.stringify(body) : null
-  })
+    signal
+  }
+  if(body) opt.body = JSON.stringify(body)
+  const res = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, opt)
   if (!res.ok) throw new Error('请求失败')
   return res.json()
 }
@@ -920,6 +928,7 @@ function renderBreadcrumb(path) {
 }
 
 const contextMenu = document.getElementById('contextMenu')
+// 修复右键菜单超出屏幕
 function showContextMenu(x, y, hasFile) {
   if(!checkConfig()) return
   document.querySelectorAll('.item-only').forEach(el => {
@@ -927,8 +936,22 @@ function showContextMenu(x, y, hasFile) {
   })
   const pasteItem = contextMenu.querySelector('[data-action="paste"]')
   pasteItem.classList.toggle('menu-disabled', !(copyCache.list && copyCache.list.length) || uiLocked)
-  contextMenu.style.left = Math.min(x, window.innerWidth - 170) + 'px'
-  contextMenu.style.top = Math.min(y, window.innerHeight - 220) + 'px'
+
+  contextMenu.style.display = 'block'
+  const menuW = contextMenu.offsetWidth
+  const menuH = contextMenu.offsetHeight
+  contextMenu.style.display = 'none'
+
+  let posX = x
+  if (x + menuW > window.innerWidth) posX = x - menuW
+  let posY = y
+  if (y + menuH > window.innerHeight) posY = y - menuH
+
+  posX = Math.max(5, posX)
+  posY = Math.max(5, posY)
+
+  contextMenu.style.left = posX + 'px'
+  contextMenu.style.top = posY + 'px'
   contextMenu.style.display = 'block'
 }
 function hideContextMenu() {
@@ -1143,6 +1166,7 @@ document.getElementById('toggleDate').addEventListener('change', e => {
 
 document.getElementById('btnRefresh').addEventListener('click', refreshCurrentDir)
 
+// 右键菜单新增下载分支
 contextMenu.querySelectorAll('.menu-item').forEach(item => {
   item.addEventListener('click', async () => {
     if(!checkConfig()) return
@@ -1163,6 +1187,10 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
         break
       case 'preview':
         if(selectedItems.length) openPreview(selectedItems[0])
+        break
+      case 'download':
+        if(selectedItems.length === 1 && selectedItems[0].type === 'file') downloadFile(selectedItems[0])
+        else alert('仅支持单个文件下载')
         break
       case 'copy':
         if(selectedItems.length) {
@@ -1190,6 +1218,25 @@ contextMenu.querySelectorAll('.menu-item').forEach(item => {
     }
   })
 })
+
+// 文件下载函数
+async function downloadFile(item) {
+  try {
+    const res = await githubApiRead(item.path)
+    const byteStr = atob(res.content)
+    const arr = new Uint8Array([...byteStr].map(c => c.charCodeAt(0)))
+    const blob = new Blob([arr])
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = item.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(a.href)
+  } catch(err) {
+    alert('下载失败：' + err.message)
+  }
+}
 
 async function batchDeleteSelected() {
   if(!checkConfig()) return
@@ -1299,85 +1346,138 @@ document.getElementById('btnUpload').addEventListener('click', () => {
   document.getElementById('fileUpload').click()
 })
 
+// 多文件串行上传队列逻辑
 document.getElementById('fileUpload').addEventListener('change', async e => {
   if(!checkConfig()) return
-  if (uiLocked || taskRunning) return;
-  const files = e.target.files
+  const files = Array.from(e.target.files)
   if (!files.length) return
   uploadPanel.classList.remove('hidden')
-  startLoading();
-  try {
-    for (const file of files) {
-      const item = document.createElement('div')
-      item.className = 'upload-item'
-      item.innerHTML = `
-        <div class="upload-filename">${file.name}</div>
-        <div class="progress-bar"><div class="progress-inner"></div></div>
-        <div class="upload-status">准备上传...</div>
-      `
-      uploadList.appendChild(item)
-      const progressInner = item.querySelector('.progress-inner')
-      const statusText = item.querySelector('.upload-status')
-      try {
-        statusText.textContent = '读取文件中...'
-        const reader = new FileReader()
-        reader.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            const pct = Math.round((ev.loaded / ev.total) * 40)
-            progressInner.style.width = pct + '%'
-            statusText.textContent = `读取文件 ${ev.loaded}/${ev.total} 字节`
-          }
-        }
-        reader.onload = async () => {
-          progressInner.style.width = '45%'
-          statusText.textContent = '转换Base64并提交请求...'
-          const b64 = reader.result.split(',')[1]
-          // 上传文件永远使用原始文件名，不加日期
-          const targetPath = `${currentPath}/${file.name}`
-          let reqProgress = 45
-          const timer = setInterval(() => {
-            reqProgress += Math.floor(Math.random() * 3)
-            if (reqProgress >= 90) reqProgress = 90
-            progressInner.style.width = reqProgress + '%'
-            statusText.textContent = `请求上传中 ${reqProgress}%`
-          }, 80)
-          await githubApiWrite(targetPath, 'PUT', { message: `上传 ${file.name}`, content: b64 })
-          clearInterval(timer)
-          progressInner.style.width = '100%'
-          statusText.textContent = '上传完成'
-          statusText.className = 'upload-status status-success'
-          await sleep(API_DELAY)
-        }
-        reader.onerror = () => {
-          progressInner.style.width = '0%'
-          statusText.textContent = '文件读取失败'
-          statusText.className = 'upload-status status-error'
-        }
-        reader.readAsDataURL(file)
-      } catch (err) {
-        progressInner.style.width = '0%'
-        statusText.textContent = '上传失败：' + err.message
-        statusText.className = 'upload-status status-error'
-      }
-    }
-    await reloadAllView();
-  } catch (err) {
-    console.error('上传整体异常', err)
-  } finally {
-    fullEndLoading();
-  }
+  // 加入上传队列
+  files.forEach(file => uploadQueue.push(file))
   e.target.value = ''
+  // 执行队列
+  runUploadQueue()
 })
 
-function openPreview(item) {
+async function runUploadQueue() {
+  if(currentUploadTask || uploadQueue.length === 0) return
+  currentUploadTask = uploadQueue.shift()
+  const file = currentUploadTask
+  const uploadItemId = Date.now() + Math.random().toString(36)
+  const abortCtrl = new AbortController()
+  uploadAbortControllers.set(uploadItemId, abortCtrl)
+
+  // 渲染上传项（新增取消按钮）
+  const item = document.createElement('div')
+  item.className = 'upload-item'
+  item.dataset.uid = uploadItemId
+  item.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="upload-filename">${file.name}</div>
+      <button class="upload-cancel-btn" style="color:#d83b01;border:none;background:transparent;cursor:pointer;padding:2px 6px;">取消</button>
+    </div>
+    <div class="progress-bar"><div class="progress-inner"></div></div>
+    <div class="upload-status">准备上传...</div>
+  `
+  uploadList.appendChild(item)
+  const progressInner = item.querySelector('.progress-inner')
+  const statusText = item.querySelector('.upload-status')
+  const cancelBtn = item.querySelector('.upload-cancel-btn')
+
+  // 取消按钮事件
+  cancelBtn.onclick = () => {
+    abortCtrl.abort()
+    statusText.textContent = '已取消'
+    statusText.className = 'upload-status status-error'
+    progressInner.style.width = '0%'
+    uploadAbortControllers.delete(uploadItemId)
+  }
+
+  try {
+    statusText.textContent = '读取文件中...'
+    const reader = new FileReader()
+    reader.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round((ev.loaded / ev.total) * 40)
+        progressInner.style.width = pct + '%'
+        statusText.textContent = `读取文件 ${ev.loaded}/${ev.total} 字节`
+      }
+    }
+    await new Promise((res, rej) => {
+      reader.onload = res
+      reader.onerror = rej
+      reader.readAsDataURL(file)
+    })
+    const b64 = reader.result.split(',')[1]
+    progressInner.style.width = '45%'
+    statusText.textContent = '提交至仓库...'
+    let reqProgress = 45
+    const timer = setInterval(() => {
+      reqProgress += Math.floor(Math.random() * 3)
+      if (reqProgress >= 90) reqProgress = 90
+      progressInner.style.width = reqProgress + '%'
+      statusText.textContent = `上传中 ${reqProgress}%`
+    }, 80)
+    // 上传接口携带中断信号
+    await githubApiWrite(`${currentPath}/${file.name}`, 'PUT', {
+      message: `上传 ${file.name}`,
+      content: b64
+    }, abortCtrl.signal)
+    clearInterval(timer)
+    progressInner.style.width = '100%'
+    statusText.textContent = '上传完成'
+    statusText.className = 'upload-status status-success'
+    uploadAbortControllers.delete(uploadItemId)
+    await sleep(API_DELAY)
+  } catch (err) {
+    if(err.name === 'AbortError') {
+      statusText.textContent = '上传已取消'
+    } else {
+      progressInner.style.width = '0%'
+      statusText.textContent = '上传失败：' + err.message
+      statusText.className = 'upload-status status-error'
+    }
+    uploadAbortControllers.delete(uploadItemId)
+  }
+  currentUploadTask = null
+  // 队列还有任务，继续下一个；无任务再刷新目录
+  if(uploadQueue.length > 0) {
+    runUploadQueue()
+  } else {
+    refreshCurrentDir()
+  }
+}
+
+// 预览修复：移除public/前缀，404兜底API读取base64
+async function openPreview(item) {
   if(!checkConfig()) return
   if (uiLocked) return;
-  const url = location.origin + '/' + item.path
-  document.getElementById('previewImg').src = url
-  document.getElementById('previewModal').style.display = 'flex'
+  const previewImg = document.getElementById('previewImg')
+  const modal = document.getElementById('previewModal')
+  // 去除路径开头 public/
+  let realPath = item.path
+  if(realPath.startsWith('public/')) realPath = realPath.slice(7)
+  const directUrl = `${location.origin}/${realPath}`
+  previewImg.src = directUrl
+  modal.style.display = 'flex'
+
+  // 监听图片加载失败，走API读取base64
+  previewImg.onerror = async () => {
+    try {
+      const res = await githubApiRead(item.path)
+      const byteStr = atob(res.content)
+      const arr = new Uint8Array([...byteStr].map(c => c.charCodeAt(0)))
+      const blob = new Blob([arr])
+      previewImg.src = URL.createObjectURL(blob)
+    } catch(e) {
+      alert('图片加载失败，无法读取资源')
+      modal.style.display = 'none'
+    }
+  }
 }
 document.getElementById('closePreview').addEventListener('click', () => {
   document.getElementById('previewModal').style.display = 'none'
+  document.getElementById('previewImg').src = ''
 })
 
 function openProp() {
