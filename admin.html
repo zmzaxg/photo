@@ -1573,6 +1573,7 @@ async function batchCutSingle(item, progressDom){
 // 2. 区分取消/清除/重试多按钮；失败项带重试
 // 3. 失败信息展示在文件名后方
 // 4. 顶部一键清除成功、一键重试全部失败
+// 5. 重试逻辑：删除旧条目，新建全新任务放队列末尾
 const uploadPanel = document.getElementById('uploadPanel')
 const uploadList = document.getElementById('uploadList')
 const uploadPanelClose = document.getElementById('uploadPanelClose')
@@ -1594,39 +1595,84 @@ clearSuccessUpload.addEventListener('click', ()=>{
   })
 })
 
-// 一键重试全部失败项，追加到队列末尾
+// 一键重试全部失败项
 retryAllFailedUpload.addEventListener('click', async ()=>{
-  const failTasks = uploadQueue.filter(q => q.status === 'error')
-  failTasks.forEach(q=>{
-    // 重置状态、新建控制器
-    q.status = 'pending'
-    q.ctrl = new AbortController()
-    uploadAbortControllers.set(q.uid, q.ctrl)
-    // 重置DOM显示
-    q.progressDom.style.width = '0%'
-    q.statusDom.className = 'task-status status-pending'
-    q.statusDom.textContent = `排队中 | 上传目录：${pureName(q.targetUploadDir)}`
-    // 替换按钮为取消
-    q.actionWrap.innerHTML = `<button class="task-action-btn btn-cancel">取消</button>`
-    const newCancelBtn = q.actionWrap.querySelector('.btn-cancel')
-    newCancelBtn.onclick = ()=>{
-      const targetTask = uploadQueue.find(qu=>qu.uid === q.uid)
-      if(!targetTask) return
-      if(targetTask.status === 'pending'){
-        uploadQueue = uploadQueue.filter(qu=>qu.uid !== q.uid)
-        uploadAbortControllers.delete(q.uid)
-        q.dom.remove()
-      }else if(targetTask.status === 'running'){
-        targetTask.ctrl.abort()
-      }else{
-        q.dom.remove()
-      }
-    }
-    // 重新推入队列尾部
-    uploadQueue.push(q)
+  // 1. 收集所有失败任务
+  const failTaskList = uploadQueue.filter(q => q.status === 'error')
+  if(failTaskList.length === 0) return
+
+  // 2. 全部删除页面上失败DOM
+  failTaskList.forEach(oldTask => {
+    if(oldTask.dom) oldTask.dom.remove()
+    uploadAbortControllers.delete(oldTask.uid)
+  })
+
+  // 3. 循环生成全新任务，追加到队列末尾
+  failTaskList.forEach(oldTask => {
+    createNewUploadTask(oldTask.file, oldTask.targetUploadDir)
   })
   runUploadQueue()
 })
+
+// 通用：创建全新上传任务并渲染DOM
+function createNewUploadTask(file, targetDir) {
+  const uid = Date.now() + Math.random().toString(36)
+  const ctrl = new AbortController()
+  uploadAbortControllers.set(uid, ctrl)
+
+  // 推入全新任务对象
+  uploadQueue.push({
+    file,
+    uid,
+    ctrl,
+    dom: null,
+    statusDom: null,
+    progressDom: null,
+    actionWrap: null,
+    status: 'pending',
+    targetUploadDir: targetDir,
+    errMsg: ''
+  })
+
+  // 渲染全新DOM行
+  const itemDom = document.createElement('div')
+  itemDom.className = 'task-item'
+  itemDom.innerHTML = `
+    <div class="task-item-top">
+      <div class="task-filename">${file.name}</div>
+      <div class="task-action-wrap">
+        <button class="task-action-btn btn-cancel">取消</button>
+      </div>
+    </div>
+    <div class="progress-bar"><div class="progress-inner"></div></div>
+    <div class="task-status status-pending">排队中 | 上传目录：${pureName(targetDir)}</div>
+  `
+  const actionWrap = itemDom.querySelector('.task-action-wrap')
+  const cancelBtn = itemDom.querySelector('.btn-cancel')
+  const sDom = itemDom.querySelector('.task-status')
+  const pDom = itemDom.querySelector('.progress-inner')
+
+  cancelBtn.onclick = ()=>{
+    const targetTask = uploadQueue.find(q=>q.uid === uid)
+    if(!targetTask) return
+    if(targetTask.status === 'pending'){
+      uploadQueue = uploadQueue.filter(q=>q.uid !== uid)
+      uploadAbortControllers.delete(uid)
+      itemDom.remove()
+    }else if(targetTask.status === 'running'){
+      targetTask.ctrl.abort()
+    }else{
+      itemDom.remove()
+    }
+  }
+
+  uploadList.appendChild(itemDom)
+  const newTask = uploadQueue.find(q=>q.uid === uid)
+  newTask.dom = itemDom
+  newTask.statusDom = sDom
+  newTask.progressDom = pDom
+  newTask.actionWrap = actionWrap
+}
 
 document.getElementById('btnNewFolder').addEventListener('click', () => {
   if(!checkConfig()) return
@@ -1665,7 +1711,7 @@ document.getElementById('btnUpload').addEventListener('click', () => {
   document.getElementById('fileUpload').click()
 })
 
-// 上传选中文件，全部入队，记录当前目录作为上传目标目录
+// 上传选中文件，批量生成全新任务
 document.getElementById('fileUpload').addEventListener('change', async e => {
   if(!checkConfig()) return
   if(batchProcessingLock) return
@@ -1673,66 +1719,9 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
   if (!files.length) return
   uploadPanel.classList.remove('hidden')
   e.target.value = ''
-  // 记录当前目录为这批文件的上传目录，切换页面目录不影响
   const uploadDirWhenAdd = currentPath
   files.forEach(file => {
-    const uid = Date.now() + Math.random().toString(36)
-    const ctrl = new AbortController()
-    uploadAbortControllers.set(uid, ctrl)
-    // 存入入队时目录
-    uploadQueue.push({
-      file,
-      uid,
-      ctrl,
-      dom:null,
-      statusDom:null,
-      progressDom:null,
-      actionWrap:null,
-      status: 'pending',
-      targetUploadDir: uploadDirWhenAdd,
-      errMsg: ''
-    })
-
-    // 渲染条目：默认显示【取消】按钮
-    const itemDom = document.createElement('div')
-    itemDom.className = 'task-item'
-    itemDom.innerHTML = `
-      <div class="task-item-top">
-        <div class="task-filename">${file.name}</div>
-        <div class="task-action-wrap">
-          <button class="task-action-btn btn-cancel">取消</button>
-        </div>
-      </div>
-      <div class="progress-bar"><div class="progress-inner"></div></div>
-      <div class="task-status status-pending">排队中 | 上传目录：${pureName(uploadDirWhenAdd)}</div>
-    `
-    const actionWrap = itemDom.querySelector('.task-action-wrap')
-    const cancelBtn = itemDom.querySelector('.btn-cancel')
-    const sDom = itemDom.querySelector('.task-status')
-    const pDom = itemDom.querySelector('.progress-inner')
-
-    cancelBtn.onclick = ()=>{
-      const targetTask = uploadQueue.find(q=>q.uid === uid)
-      if(!targetTask) return
-      if(targetTask.status === 'pending'){
-        // 排队中：直接移出队列，删除DOM
-        uploadQueue = uploadQueue.filter(q=>q.uid !== uid)
-        uploadAbortControllers.delete(uid)
-        itemDom.remove()
-      }else if(targetTask.status === 'running'){
-        // 正在上传：中断请求
-        targetTask.ctrl.abort()
-      }else{
-        // 成功/失败/已取消：清除占位
-        itemDom.remove()
-      }
-    }
-    uploadList.appendChild(itemDom)
-    const qItem = uploadQueue.find(q=>q.uid === uid)
-    qItem.dom = itemDom
-    qItem.statusDom = sDom
-    qItem.progressDom = pDom
-    qItem.actionWrap = actionWrap
+    createNewUploadTask(file, uploadDirWhenAdd)
   })
   runUploadQueue()
 })
@@ -1747,7 +1736,6 @@ async function runUploadQueue() {
   q.progressDom.style.width = '20%'
   const file = q.file
   const ctrl = q.ctrl
-  // 使用入队时的目录拼接路径，不使用全局currentPath
   const uploadFullPath = `${q.targetUploadDir}/${file.name}`
 
   try {
@@ -1775,7 +1763,6 @@ async function runUploadQueue() {
       q.statusDom.textContent = `上传中 ${reqPct}% | 上传目录：${pureName(q.targetUploadDir)}`
     },80)
 
-    // 上传到入队时保存的目录，不受页面切换目录影响
     await githubApiWrite(uploadFullPath, 'PUT', {
       message: `上传 ${file.name}`,
       content: b64
@@ -1784,7 +1771,7 @@ async function runUploadQueue() {
     q.progressDom.style.width = '100%'
     q.statusDom.className = 'task-status status-success'
     q.statusDom.textContent = `上传完成 | 上传目录：${pureName(q.targetUploadDir)}`
-    // 完成后按钮替换为清除
+    // 成功切换清除按钮
     q.actionWrap.innerHTML = `<button class="task-action-btn btn-clear">清除</button>`
     const clearBtn = q.actionWrap.querySelector('.btn-clear')
     clearBtn.onclick = ()=> q.dom.remove()
@@ -1794,7 +1781,6 @@ async function runUploadQueue() {
     if(err.name === 'AbortError'){
       q.statusDom.textContent = `已取消 | 上传目录：${pureName(q.targetUploadDir)}`
       q.status = 'cancel'
-      // 取消显示清除按钮
       q.actionWrap.innerHTML = `<button class="task-action-btn btn-clear">清除</button>`
       const clearBtn = q.actionWrap.querySelector('.btn-clear')
       clearBtn.onclick = ()=> q.dom.remove()
@@ -1802,47 +1788,30 @@ async function runUploadQueue() {
       q.progressDom.style.width = '0%'
       q.statusDom.className = 'task-status status-error'
       q.errMsg = err.message
-      // 失败：文件名后方展示错误原因 + 重试+清除双按钮
+      // 文件名追加失败原因
       q.dom.querySelector('.task-filename').innerText = `${file.name} 【失败：${err.message}】`
       q.statusDom.textContent = `上传目录：${pureName(q.targetUploadDir)}`
       q.status = 'error'
-      // 失败按钮：重试 + 清除
+      // 重试+清除双按钮
       q.actionWrap.innerHTML = `
         <button class="task-action-btn btn-retry">重试</button>
         <button class="task-action-btn btn-clear">清除</button>
       `
       const retryBtn = q.actionWrap.querySelector('.btn-retry')
       const clearBtn = q.actionWrap.querySelector('.btn-clear')
-      // 清除按钮
+
+      // 清除直接删行
       clearBtn.onclick = ()=> q.dom.remove()
-      // 重试按钮
-      retryBtn.onclick = async ()=>{
-        // 重置状态
-        q.status = 'pending'
-        q.ctrl = new AbortController()
-        uploadAbortControllers.set(q.uid, q.ctrl)
-        q.progressDom.style.width = '0%'
-        q.statusDom.className = 'task-status status-pending'
-        q.statusDom.textContent = `排队中 | 上传目录：${pureName(q.targetUploadDir)}`
-        // 恢复原始文件名
-        q.dom.querySelector('.task-filename').innerText = file.name
-        // 换回取消按钮
-        q.actionWrap.innerHTML = `<button class="task-action-btn btn-cancel">取消</button>`
-        const newCancelBtn = q.actionWrap.querySelector('.btn-cancel')
-        newCancelBtn.onclick = ()=>{
-          const targetTask = uploadQueue.find(qu=>qu.uid === q.uid)
-          if(!targetTask) return
-          if(targetTask.status === 'pending'){
-            uploadQueue = uploadQueue.filter(qu=>qu.uid !== q.uid)
-            uploadAbortControllers.delete(q.uid)
-            q.dom.remove()
-          }else if(targetTask.status === 'running'){
-            targetTask.ctrl.abort()
-          }else{
-            q.dom.remove()
-          }
-        }
-        uploadQueue.push(q)
+
+      // 单行重试：删除旧行，新建任务放队尾
+      retryBtn.onclick = ()=>{
+        const oldFile = q.file
+        const oldDir = q.targetUploadDir
+        // 删除原有DOM、清理控制器
+        q.dom.remove()
+        uploadAbortControllers.delete(q.uid)
+        // 生成全新任务
+        createNewUploadTask(oldFile, oldDir)
         runUploadQueue()
       }
     }
@@ -1851,7 +1820,7 @@ async function runUploadQueue() {
   currentUploadTask = null
   await sleep(150)
   runUploadQueue()
-  // 上传队列全部结束刷新目录
+  // 全部上传完成刷新目录
   if(uploadQueue.length === 0 && !currentUploadTask){
     refreshCurrentDir()
   }
