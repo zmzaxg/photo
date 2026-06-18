@@ -161,7 +161,7 @@
         <button class="prev-btn" id="prevImgBtn">上一张 ◀</button>
         <button class="next-btn" id="nextImgBtn">下一张 ▶</button>
         <button class="open-viewer-btn" id="openViewerBtn">全屏查看(Viewer)</button>
-        <span style="font-size:13px;color:#666;margin-left:10px;">Viewer内左右切换 / 键盘 ← →</span>
+        <span style="font-size:13px;color:#666;margin-left:10px;">Viewer内左右切换不关闭弹窗，页面信息同步更新</span>
       </div>
     </div>
     <!-- 页面主预览图 -->
@@ -194,6 +194,8 @@
     let currentPhotoIndex = 0
     let currentDirPhotoList = []
     let viewer = null
+    // 标记Viewer是否处于打开状态
+    let viewerIsOpen = false
 
     // DOM缓存
     const gridPage = document.getElementById('gridPage')
@@ -265,8 +267,8 @@
       return { dir: params.get('dir') || '', photo: params.get('photo') }
     }
 
-    // 刷新页面下方全部图片信息
-    async function refreshDetailInfo(dir, fileName) {
+    // 仅刷新页面下方图片信息，不修改hash、不销毁Viewer
+    async function refreshPageInfoOnly(dir, fileName) {
       const url = getAssetUrl(dir, fileName)
       imgLink.value = location.origin + url
       detailFileName.innerText = fileName
@@ -278,14 +280,23 @@
       document.getElementById('exifGps').innerText = exif.gpsStr
     }
 
-    // 切换图片索引，更新路由
+    // 切换图片索引，区分Viewer打开/关闭两种状态
     function switchImageByIndex(newIndex) {
       if (currentDirPhotoList.length <= 1) return
+      // 循环边界
       if (newIndex < 0) newIndex = currentDirPhotoList.length - 1
       if (newIndex >= currentDirPhotoList.length) newIndex = 0
       currentPhotoIndex = newIndex
       const targetFile = currentDirPhotoList[currentPhotoIndex]
-      location.hash = `dir=${encodeURIComponent(currentDirPath)}&photo=${encodeURIComponent(targetFile)}`
+      // 1. 强制刷新页面主图+EXIF信息（无刷新，不重载页面）
+      refreshPageInfoOnly(currentDirPath, targetFile)
+      // 2. 如果Viewer弹窗正在打开，直接在Viewer内切图，不销毁弹窗
+      if (viewer && viewerIsOpen) {
+        viewer.view(currentPhotoIndex)
+      } else {
+        // Viewer未打开才更新hash路由
+        location.hash = `dir=${encodeURIComponent(currentDirPath)}&photo=${encodeURIComponent(targetFile)}`
+      }
     }
 
     function goPrevImage() {
@@ -297,60 +308,73 @@
 
     // 初始化Viewer实例
     function initViewer() {
-      if (viewer) viewer.destroy()
-      viewerSourceWrap.innerHTML = ''
-      // 生成全部同级图片img DOM放入隐藏容器
-      currentDirPhotoList.forEach((name, idx) => {
-        const img = document.createElement('img')
-        img.src = getAssetUrl(currentDirPath, name)
-        img.alt = name
-        viewerSourceWrap.appendChild(img)
-      })
-      // 创建Viewer
-      viewer = new Viewer(viewerSourceWrap, {
-        inline: false,
-        backdrop: true,
-        navbar: true,
-        title: true,
-        toolbar: true,
-        tooltip: true,
-        movable: true,
-        zoomable: true,
-        rotatable: true,
-        scalable: true,
-        transition: true,
-        fullscreen: true,
-        keyboard: true,
-        url: 'src',
-        view: (event) => {
-          const newIdx = event.detail.index
-          if (newIdx === currentPhotoIndex) return
-          currentPhotoIndex = newIdx
-          const targetName = currentDirPhotoList[newIdx]
-          refreshDetailInfo(currentDirPath, targetName)
-          location.hash = `dir=${encodeURIComponent(currentDirPath)}&photo=${encodeURIComponent(targetName)}`
-        }
-      })
-      // 打开Viewer到当前索引
+      // 复用已有实例，不重复销毁重建
+      if (!viewer) {
+        viewerSourceWrap.innerHTML = ''
+        // 生成全部同级图片img DOM放入隐藏容器
+        currentDirPhotoList.forEach((name) => {
+          const img = document.createElement('img')
+          img.src = getAssetUrl(currentDirPath, name)
+          img.alt = name
+          viewerSourceWrap.appendChild(img)
+        })
+        // 创建Viewer
+        viewer = new Viewer(viewerSourceWrap, {
+          inline: false,
+          backdrop: true,
+          navbar: true,
+          title: true,
+          toolbar: true,
+          tooltip: true,
+          movable: true,
+          zoomable: true,
+          rotatable: true,
+          scalable: true,
+          transition: true,
+          fullscreen: true,
+          keyboard: true,
+          url: 'src',
+          // 弹窗打开标记
+          shown: () => {
+            viewerIsOpen = true
+          },
+          // 弹窗关闭标记
+          hidden: () => {
+            viewerIsOpen = false
+          },
+          // Viewer内部切换图片：仅同步页面信息，不修改hash、不关闭弹窗
+          view: (event) => {
+            const newIdx = event.detail.index
+            if (newIdx === currentPhotoIndex) return
+            currentPhotoIndex = newIdx
+            const targetName = currentDirPhotoList[newIdx]
+            // 仅刷新页面信息，不更新hash，不会触发页面重载销毁Viewer
+            refreshPageInfoOnly(currentDirPath, targetName)
+          }
+        })
+      }
+      // 直接打开到当前索引，全程不销毁实例
       viewer.view(currentPhotoIndex)
     }
 
-    // 页面总切换逻辑
+    // 页面总切换逻辑（仅首次进入/切换相册时执行）
     function switchPage({ dir, photo }) {
       gridPage.style.display = 'none'
       detailPage.style.display = 'none'
       currentDirPath = dir
       backRow.style.display = dir || photo ? 'block' : 'none'
+      // 切换相册/返回目录时销毁Viewer
       if (viewer) {
         viewer.destroy()
         viewer = null
+        viewerIsOpen = false
       }
       if (photo) {
         detailPage.style.display = 'block'
         const node = dirTree.get(dir)
         currentDirPhotoList = node.files
         currentPhotoIndex = currentDirPhotoList.findIndex(n => n === photo)
-        refreshDetailInfo(dir, photo)
+        refreshPageInfoOnly(dir, photo)
       } else {
         gridPage.style.display = 'block'
         renderMixedItemGrid(dir)
@@ -496,8 +520,12 @@
       switchPage(parseHash())
     })
 
-    // 路由监听
-    window.addEventListener('hashchange', () => switchPage(parseHash()))
+    // 路由监听（仅hash真正变化时刷新页面，Viewer打开时内部切换不会触发hash变更）
+    window.addEventListener('hashchange', () => {
+      // 如果Viewer弹窗打开，忽略hash变更，不重载页面
+      if (viewerIsOpen) return
+      switchPage(parseHash())
+    })
 
     // 页面初始化
     window.onload = () => {
