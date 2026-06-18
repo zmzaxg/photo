@@ -427,6 +427,24 @@ body { background: #f3f3f3; height: 100vh; overflow: hidden; }
   .batch-task-panel { right:5px; bottom:360px; }
   .file-area { padding-bottom: 180px; }
 }
+
+.task-action-btn {
+  border:none;
+  padding:2px 8px;
+  border-radius:3px;
+  cursor:pointer;
+  font-size:12px;
+}
+/* 排队/上传中 取消按钮 */
+.task-item-top .task-action-btn:not(.clear-btn) {
+  background:#ff4d4f;
+  color:#fff;
+}
+/* 完成/失败 清除按钮 */
+.task-action-btn.clear-btn {
+  background:#ccc;
+  color:#222;
+}
   </style>
 </head>
 <body>
@@ -1339,7 +1357,7 @@ async function downloadFile(item) {
   } catch(err) {
     alert('下载失败：' + err.message)
   }
-  }
+}
 
 // ===================== 批量任务核心函数 =====================
 function addBatchTask(type, item) {
@@ -1382,8 +1400,11 @@ function addBatchTask(type, item) {
       div.remove()
       batchAbortMap.delete(tid)
       checkBatchAllDone()
+    }else if(task.status === 'running'){
+      // 运行中中断请求
+      task.ctrl.abort()
     }else{
-      // 运行/完成仅清理界面
+      // 完成/失败仅清理界面
       div.remove()
     }
   }
@@ -1502,7 +1523,10 @@ async function batchCutSingle(item, progressDom){
   progressDom.style.width = '100%'
 }
 
-// 上传面板逻辑重构：多文件全部渲染，排队显示排队中
+// 上传面板逻辑重构：
+// 1. 存储入队目录 targetUploadDir，切换目录不改变上传目标路径
+// 2. 区分取消按钮 / 清除按钮；排队/上传中=取消；成功/失败=清除
+// 3. 已完成条目可点清除删除占位，运行中点取消中断请求
 const uploadPanel = document.getElementById('uploadPanel')
 const uploadList = document.getElementById('uploadList')
 const uploadPanelClose = document.getElementById('uploadPanelClose')
@@ -1547,7 +1571,7 @@ document.getElementById('btnUpload').addEventListener('click', () => {
   document.getElementById('fileUpload').click()
 })
 
-// 上传选中文件，全部入队并渲染列表
+// 上传选中文件，全部入队，记录当前目录作为上传目标目录
 document.getElementById('fileUpload').addEventListener('change', async e => {
   if(!checkConfig()) return
   if(batchProcessingLock) return
@@ -1555,37 +1579,52 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
   if (!files.length) return
   uploadPanel.classList.remove('hidden')
   e.target.value = ''
+  // 记录当前目录为这批文件的上传目录，切换页面目录不影响
+  const uploadDirWhenAdd = currentPath
   files.forEach(file => {
     const uid = Date.now() + Math.random().toString(36)
     const ctrl = new AbortController()
     uploadAbortControllers.set(uid, ctrl)
-    uploadQueue.push({file, uid, ctrl, dom:null, statusDom:null, progressDom:null})
+    // 存入入队时目录
+    uploadQueue.push({
+      file,
+      uid,
+      ctrl,
+      dom:null,
+      statusDom:null,
+      progressDom:null,
+      status: 'pending',
+      targetUploadDir: uploadDirWhenAdd
+    })
 
-    // 渲染每一条上传项，默认排队中
+    // 渲染条目：默认显示【取消】按钮
     const itemDom = document.createElement('div')
     itemDom.className = 'task-item'
     itemDom.innerHTML = `
       <div class="task-item-top">
         <div class="task-filename">${file.name}</div>
-        <button class="task-del-btn">×</button>
+        <button class="task-action-btn">取消</button>
       </div>
       <div class="progress-bar"><div class="progress-inner"></div></div>
-      <div class="task-status status-pending">排队中</div>
+      <div class="task-status status-pending">排队中 | 上传目录：${pureName(uploadDirWhenAdd)}</div>
     `
-    const delBtn = itemDom.querySelector('.task-del-btn')
+    const actionBtn = itemDom.querySelector('.task-action-btn')
     const sDom = itemDom.querySelector('.task-status')
     const pDom = itemDom.querySelector('.progress-inner')
 
-    delBtn.onclick = ()=>{
+    actionBtn.onclick = ()=>{
       const targetTask = uploadQueue.find(q=>q.uid === uid)
       if(!targetTask) return
-      if(targetTask.status === 'pending' || !targetTask.status){
-        // 排队中：移出队列，取消上传
+      if(targetTask.status === 'pending'){
+        // 排队中：直接移出队列，删除DOM
         uploadQueue = uploadQueue.filter(q=>q.uid !== uid)
         uploadAbortControllers.delete(uid)
         itemDom.remove()
+      }else if(targetTask.status === 'running'){
+        // 正在上传：中断请求
+        targetTask.ctrl.abort()
       }else{
-        // 运行/完成仅关闭界面
+        // 成功/失败/已取消：清除占位
         itemDom.remove()
       }
     }
@@ -1594,6 +1633,7 @@ document.getElementById('fileUpload').addEventListener('change', async e => {
     qItem.dom = itemDom
     qItem.statusDom = sDom
     qItem.progressDom = pDom
+    qItem.actionBtn = actionBtn
   })
   runUploadQueue()
 })
@@ -1602,11 +1642,14 @@ async function runUploadQueue() {
   if(currentUploadTask || uploadQueue.length === 0) return
   currentUploadTask = uploadQueue.shift()
   const q = currentUploadTask
+  q.status = 'running'
   q.statusDom.className = 'task-status status-running'
-  q.statusDom.textContent = '读取文件...'
+  q.statusDom.textContent = `读取文件... | 上传目录：${pureName(q.targetUploadDir)}`
   q.progressDom.style.width = '20%'
   const file = q.file
   const ctrl = q.ctrl
+  // 使用入队时的目录拼接路径，不使用全局currentPath
+  const uploadFullPath = `${q.targetUploadDir}/${file.name}`
 
   try {
     const reader = new FileReader()
@@ -1614,7 +1657,7 @@ async function runUploadQueue() {
       if (ev.lengthComputable) {
         const pct = Math.round((ev.loaded / ev.total) * 40)
         q.progressDom.style.width = pct + '%'
-        q.statusDom.textContent = `读取 ${ev.loaded}/${ev.total}`
+        q.statusDom.textContent = `读取 ${ev.loaded}/${ev.total} | 上传目录：${pureName(q.targetUploadDir)}`
       }
     }
     await new Promise((res, rej) => {
@@ -1624,32 +1667,40 @@ async function runUploadQueue() {
     })
     const b64 = reader.result.split(',')[1]
     q.progressDom.style.width = '45%'
-    q.statusDom.textContent = '提交至仓库...'
+    q.statusDom.textContent = `提交至仓库... | 上传目录：${pureName(q.targetUploadDir)}`
     let reqPct = 45
     const timer = setInterval(()=>{
       reqPct += Math.floor(Math.random() * 3)
       if(reqPct >= 90) reqPct = 90
       q.progressDom.style.width = reqPct + '%'
-      q.statusDom.textContent = `上传中 ${reqPct}%`
+      q.statusDom.textContent = `上传中 ${reqPct}% | 上传目录：${pureName(q.targetUploadDir)}`
     },80)
 
-    await githubApiWrite(`${currentPath}/${file.name}`, 'PUT', {
+    // 上传到入队时保存的目录，不受页面切换目录影响
+    await githubApiWrite(uploadFullPath, 'PUT', {
       message: `上传 ${file.name}`,
       content: b64
     }, ctrl.signal)
     clearInterval(timer)
     q.progressDom.style.width = '100%'
     q.statusDom.className = 'task-status status-success'
-    q.statusDom.textContent = '上传完成'
+    q.statusDom.textContent = `上传完成 | 上传目录：${pureName(q.targetUploadDir)}`
+    // 完成后按钮文字改为清除
+    q.actionBtn.textContent = '清除'
     uploadAbortControllers.delete(q.uid)
+    q.status = 'success'
   } catch (err) {
     if(err.name === 'AbortError'){
-      q.statusDom.textContent = '已取消'
+      q.statusDom.textContent = `已取消 | 上传目录：${pureName(q.targetUploadDir)}`
+      q.status = 'cancel'
     }else{
       q.progressDom.style.width = '0%'
       q.statusDom.className = 'task-status status-error'
-      q.statusDom.textContent = '失败：' + err.message
+      q.statusDom.textContent = `失败：${err.message} | 上传目录：${pureName(q.targetUploadDir)}`
+      q.status = 'error'
     }
+    // 失败/取消后按钮改为清除
+    q.actionBtn.textContent = '清除'
     uploadAbortControllers.delete(q.uid)
   }
   currentUploadTask = null
