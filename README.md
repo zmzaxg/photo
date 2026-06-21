@@ -191,11 +191,13 @@ GitHub Album | zmzaxg/photo纯前端静态相册系统
 
 ---
 📂 项目目录结构
+```txt
 Album-GitHub-Photo
 ├── index.html          # 前台相册展示页（用户访问端）
 ├── admin.html          # 后台资源管理页（管理员操作端）
 └── public
     └── albums          # 默认相册存储目录（用户可自行全局修改目录名）
+```
 
 
 ---
