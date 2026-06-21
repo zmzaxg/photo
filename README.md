@@ -1,27 +1,36 @@
 README.md
 
-GitHub Album | 纯前端静态相册系统
+GitHub Album | zmzaxg/photo纯前端静态相册系统
 ✨ 无后端、纯静态、零服务器、支持 EdgeOne/Cloudflare 一键极速部署的现代化相册托管系统
 本项目是一套完全纯前端实现的轻量化图片相册解决方案，架构分离为用户浏览前台与高级文件管理后台。所有文件存储、目录管理、图片增删改查均依托 GitHub 官方 API 实现，无需数据库与服务端部署。
 项目主打 EdgeOne、Cloudflare 两大主流平台一键搭建，无需复杂配置、无需服务器，秒级部署上线。本站预览站点全程基于腾讯云 EdgeOne 国内边缘节点搭建，具备极致的国内访问速度与稳定性。
-在线预览站点：https://photo.axsb.cn（EdgeOne 国内极速部署）
+在线预览站点：https://photo.axsb.cn  （EdgeOne 国内极速部署）
 
 ---
 📷 项目预览
 前台相册展示页：
+
 ![PC首页预览1](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC首页预览1.png)
-后台文件管理页
+
 ![PC首页预览2](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC首页预览2.png)
+
 ![PC首页预览3](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC首页预览3.png)
+
 [![PC首页预览4](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC首页预览4.png)]
+
 ![移动端首页预览1](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/移动端首页预览1.png)
+
 ![移动端首页预览2](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/移动端首页预览2.png)
+
 ![移动端首页预览3](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/移动端首页预览3.png)
 
 
 后台相册管理页：
+
 ![PC管理预览1](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC管理预览1.png)
+
 ![PC管理预览2](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC管理预览2.png)
+
 ![PC管理预览3](https://photo.axsb.cn/albums/2026-06-21-其他/2026-06-21-预览/PC管理预览3.png)
 
 移动端管理页面均适配，功能与PC端一致，不再截图了。
