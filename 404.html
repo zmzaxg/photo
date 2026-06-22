@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>资源路径解析中</title>
+<style>
+*{margin:0;padding:0;font-family:system-ui;box-sizing:border-box;}
+body{
+  height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#f6f7f9;
+}
+.box{
+  background:#fff;
+  padding:48px 32px;
+  border-radius:12px;
+  box-shadow:0 2px 16px rgba(0,0,0,0.08);
+  text-align:center;
+}
+.load-text{font-size:16px;color:#333;}
+.err-title{font-size:22px;color:#d32f2f;margin-bottom:12px;}
+.err-desc{color:#666;margin-bottom:24px;}
+.back-home{
+  display:inline-block;
+  padding:10px 22px;
+  background:#2563eb;
+  color:#fff;
+  text-decoration:none;
+  border-radius:6px;
+}
+#errorDom{display:none;}
+</style>
+</head>
+<body>
+<div class="box">
+  <div id="loadingDom" class="load-text">正在匹配相册资源，请稍候...</div>
+  <div id="errorDom">
+    <h2 class="err-title">404 图片不存在</h2>
+    <p class="err-desc">未找到对应相册文件夹或图片文件</p>
+    <a class="back-home" href="/">返回相册首页</a>
+  </div>
+</div>
+
+<script type="module">
+// 和首页完全统一常量，不可修改
+const ALBUM_BASE = "/albums/"
+const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
+
+// Vite打包时静态预扫描全部相册图片路径（运行时无网络请求）
+const allImageGlobPaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
+// 映射表：无日期完整目录字符串 => 真实带日期完整目录
+const cleanPathMap = new Map()
+
+// 构建目录映射（逐层剥离日期前缀，存储双向匹配关系）
+function buildStaticDirMap() {
+  allImageGlobPaths.forEach(globPath => {
+    const relPath = globPath.replace("/public/albums/", "")
+    const pathSegs = relPath.split("/")
+    pathSegs.pop() // 移除文件名，仅处理文件夹层级
+    let realDirFull = ""
+    let cleanDirFull = ""
+
+    for (const seg of pathSegs) {
+      realDirFull = realDirFull ? `${realDirFull}/${seg}` : seg
+      const pureSeg = seg.match(FOLDER_DATE_REG)?.[2] || seg
+      cleanDirFull = cleanDirFull ? `${cleanDirFull}/${pureSeg}` : pureSeg
+      cleanPathMap.set(cleanDirFull, realDirFull)
+    }
+  })
+}
+
+// 读取浏览器当前404的原始访问路径
+function parseRequestUrl() {
+  const path = location.pathname
+  if (!path.startsWith(ALBUM_BASE)) return null
+  const subPath = path.slice(ALBUM_BASE.length)
+  const lastSlashIdx = subPath.lastIndexOf("/")
+  if (lastSlashIdx <= 0) return null
+
+  const cleanDir = subPath.slice(0, lastSlashIdx)
+  const fileName = subPath.slice(lastSlashIdx + 1)
+  return { cleanDir, fileName }
+}
+
+// 主中转跳转逻辑
+function runRedirect() {
+  buildStaticDirMap()
+  const req = parseRequestUrl()
+  if (!req) {
+    showError()
+    return
+  }
+  const { cleanDir, fileName } = req
+  // 查询真实带日期文件夹
+  const realDir = cleanPathMap.get(cleanDir)
+  if (!realDir) {
+    showError()
+    return
+  }
+  // 拼接真实图片地址，自动跳转，地址栏同步更新为真实路径
+  const targetImageUrl = `${location.origin}${ALBUM_BASE}${realDir}/${fileName}`
+  location.href = targetImageUrl
+}
+
+// 渲染404错误提示
+function showError() {
+  document.getElementById("loadingDom").style.display = "none"
+  document.getElementById("errorDom").style.display = "block"
+}
+
+// 启动匹配
+runRedirect()
+</script>
+</body>
+</html>
