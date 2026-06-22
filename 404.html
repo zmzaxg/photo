@@ -45,73 +45,114 @@ body{
 </div>
 
 <script type="module">
-// 和首页完全统一常量，不可修改
+// 全局统一常量
 const ALBUM_BASE = "/albums/"
 const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
 
-// Vite打包时静态预扫描全部相册图片路径（运行时无网络请求）
+// 预扫描全部图片资源（Vite打包静态生成）
 const allImageGlobPaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
-// 映射表：无日期完整目录字符串 => 真实带日期完整目录
-const cleanPathMap = new Map()
 
-// 构建目录映射（逐层剥离日期前缀，存储双向匹配关系）
-function buildStaticDirMap() {
+// 存储两个核心缓存
+// 1. 全部真实完整文件路径列表，用于校验文件是否存在
+const allRealFilePaths = new Set()
+// 2. key：无日期完整目录路径  value：真实带日期完整目录路径
+const cleanDirToRealDir = new Map()
+// 3. key：单层纯文件夹名  value：所有匹配该名称的真实父级完整目录
+const folderNameIndex = new Map()
+
+// 构建完整目录、文件索引（修复多级目录匹配漏洞）
+function buildFullIndex() {
   allImageGlobPaths.forEach(globPath => {
-    const relPath = globPath.replace("/public/albums/", "")
-    const pathSegs = relPath.split("/")
-    pathSegs.pop() // 移除文件名，仅处理文件夹层级
-    let realDirFull = ""
-    let cleanDirFull = ""
+    // 转换为站点访问相对路径
+    const fullRealRel = globPath.replace("/public/albums/", "")
+    allRealFilePaths.add(fullRealRel)
 
+    const pathSegs = fullRealRel.split("/")
+    const fileName = pathSegs.pop()
+    let realDirPath = ""
+    let cleanDirPath = ""
+
+    // 逐层处理每一级文件夹
     for (const seg of pathSegs) {
-      realDirFull = realDirFull ? `${realDirFull}/${seg}` : seg
-      const pureSeg = seg.match(FOLDER_DATE_REG)?.[2] || seg
-      cleanDirFull = cleanDirFull ? `${cleanDirFull}/${pureSeg}` : pureSeg
-      cleanPathMap.set(cleanDirFull, realDirFull)
+      realDirPath = realDirPath ? `${realDirPath}/${seg}` : seg
+      // 剥离日期前缀
+      const pureName = seg.match(FOLDER_DATE_REG)?.[2] || seg
+      cleanDirPath = cleanDirPath ? `${cleanDirPath}/${pureName}` : pureName
+
+      // 存入目录双向映射
+      cleanDirToRealDir.set(cleanDirPath, realDirPath)
+
+      // 单层文件夹名索引，用于反向检索
+      if (!folderNameIndex.has(pureName)) {
+        folderNameIndex.set(pureName, [])
+      }
+      folderNameIndex.get(pureName).push(realDirPath)
     }
   })
 }
 
-// 读取浏览器当前404的原始访问路径
+// 解析当前浏览器访问的原始路径
 function parseRequestUrl() {
   const path = location.pathname
+  console.log("原始访问路径:", path)
   if (!path.startsWith(ALBUM_BASE)) return null
-  const subPath = path.slice(ALBUM_BASE.length)
-  const lastSlashIdx = subPath.lastIndexOf("/")
+
+  const resourcePath = path.slice(ALBUM_BASE.length)
+  const lastSlashIdx = resourcePath.lastIndexOf("/")
   if (lastSlashIdx <= 0) return null
 
-  const cleanDir = subPath.slice(0, lastSlashIdx)
-  const fileName = subPath.slice(lastSlashIdx + 1)
+  const cleanDir = resourcePath.slice(0, lastSlashIdx)
+  const fileName = resourcePath.slice(lastSlashIdx + 1)
   return { cleanDir, fileName }
 }
 
-// 主中转跳转逻辑
-function runRedirect() {
-  buildStaticDirMap()
-  const req = parseRequestUrl()
-  if (!req) {
-    showError()
-    return
-  }
-  const { cleanDir, fileName } = req
-  // 查询真实带日期文件夹
-  const realDir = cleanPathMap.get(cleanDir)
-  if (!realDir) {
-    showError()
-    return
-  }
-  // 拼接真实图片地址，自动跳转，地址栏同步更新为真实路径
-  const targetImageUrl = `${location.origin}${ALBUM_BASE}${realDir}/${fileName}`
-  location.href = targetImageUrl
+// 校验 真实目录+文件 是否存在
+function fileExists(realDir, fileName) {
+  const fullRealRelPath = `${realDir}/${fileName}`
+  return allRealFilePaths.has(fullRealRelPath)
 }
 
-// 渲染404错误提示
+// 主匹配+跳转逻辑
+function runRedirect() {
+  // 构建全量索引
+  buildFullIndex()
+  const reqInfo = parseRequestUrl()
+  if (!reqInfo) {
+    showError()
+    return
+  }
+  const { cleanDir, fileName } = reqInfo
+  console.log("无日期目录:", cleanDir, "文件名:", fileName)
+
+  // 查表获取真实带日期目录
+  const realDir = cleanDirToRealDir.get(cleanDir)
+  if (!realDir) {
+    console.log("匹配不到对应带日期目录")
+    showError()
+    return
+  }
+  console.log("匹配到真实目录:", realDir)
+
+  // 校验文件真实存在
+  if (!fileExists(realDir, fileName)) {
+    console.log("目录存在，但文件不存在")
+    showError()
+    return
+  }
+
+  // 拼接真实图片直链，自动跳转
+  const targetUrl = `${location.origin}${ALBUM_BASE}${realDir}/${fileName}`
+  console.log("跳转真实图片地址:", targetUrl)
+  location.href = targetUrl
+}
+
+// 展示404错误界面
 function showError() {
   document.getElementById("loadingDom").style.display = "none"
   document.getElementById("errorDom").style.display = "block"
 }
 
-// 启动匹配
+// 启动执行匹配
 runRedirect()
 </script>
 </body>
