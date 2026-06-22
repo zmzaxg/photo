@@ -32,6 +32,7 @@ body{
   border-radius:6px;
 }
 #errorDom{display:none;}
+#tip-log{margin-top:15px;font-size:12px;color:#999;word-break:break-all}
 </style>
 </head>
 <body>
@@ -42,117 +43,97 @@ body{
     <p class="err-desc">未找到对应相册文件夹或图片文件</p>
     <a class="back-home" href="/">返回相册首页</a>
   </div>
+  <div id="tip-log"></div>
 </div>
 
 <script type="module">
-// 全局统一常量
 const ALBUM_BASE = "/albums/"
 const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
+const logDom = document.getElementById('tip-log')
+function log(text){
+  logDom.innerText += text + "\n"
+  console.log(text)
+}
 
-// 预扫描全部图片资源（Vite打包静态生成）
-const allImageGlobPaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
+// 修复：独立html页面glob扫描路径，使用项目根绝对匹配
+const allImageGlobPaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp,avif}', { eager: false }))
+log("扫描到全部资源数量："+allImageGlobPaths.length)
 
-// 存储两个核心缓存
-// 1. 全部真实完整文件路径列表，用于校验文件是否存在
 const allRealFilePaths = new Set()
-// 2. key：无日期完整目录路径  value：真实带日期完整目录路径
 const cleanDirToRealDir = new Map()
-// 3. key：单层纯文件夹名  value：所有匹配该名称的真实父级完整目录
-const folderNameIndex = new Map()
 
-// 构建完整目录、文件索引（修复多级目录匹配漏洞）
 function buildFullIndex() {
   allImageGlobPaths.forEach(globPath => {
-    // 转换为站点访问相对路径
     const fullRealRel = globPath.replace("/public/albums/", "")
     allRealFilePaths.add(fullRealRel)
-
     const pathSegs = fullRealRel.split("/")
     const fileName = pathSegs.pop()
     let realDirPath = ""
     let cleanDirPath = ""
-
-    // 逐层处理每一级文件夹
     for (const seg of pathSegs) {
       realDirPath = realDirPath ? `${realDirPath}/${seg}` : seg
-      // 剥离日期前缀
       const pureName = seg.match(FOLDER_DATE_REG)?.[2] || seg
       cleanDirPath = cleanDirPath ? `${cleanDirPath}/${pureName}` : pureName
-
-      // 存入目录双向映射
       cleanDirToRealDir.set(cleanDirPath, realDirPath)
-
-      // 单层文件夹名索引，用于反向检索
-      if (!folderNameIndex.has(pureName)) {
-        folderNameIndex.set(pureName, [])
-      }
-      folderNameIndex.get(pureName).push(realDirPath)
     }
   })
+  log("目录映射表总数："+cleanDirToRealDir.size)
 }
 
-// 解析当前浏览器访问的原始路径
 function parseRequestUrl() {
   const path = location.pathname
-  console.log("原始访问路径:", path)
+  log("当前访问路径："+path)
   if (!path.startsWith(ALBUM_BASE)) return null
-
   const resourcePath = path.slice(ALBUM_BASE.length)
   const lastSlashIdx = resourcePath.lastIndexOf("/")
   if (lastSlashIdx <= 0) return null
-
   const cleanDir = resourcePath.slice(0, lastSlashIdx)
   const fileName = resourcePath.slice(lastSlashIdx + 1)
+  log(`拆分目录:${cleanDir} 文件:${fileName}`)
   return { cleanDir, fileName }
 }
 
-// 校验 真实目录+文件 是否存在
 function fileExists(realDir, fileName) {
   const fullRealRelPath = `${realDir}/${fileName}`
   return allRealFilePaths.has(fullRealRelPath)
 }
 
-// 主匹配+跳转逻辑
 function runRedirect() {
-  // 构建全量索引
   buildFullIndex()
+  // 无任何资源直接报错
+  if(allImageGlobPaths.length === 0){
+    log("致命错误：未扫描到任何图片文件，请检查public/albums目录")
+    showError()
+    return
+  }
   const reqInfo = parseRequestUrl()
   if (!reqInfo) {
+    log("路径解析失败")
     showError()
     return
   }
   const { cleanDir, fileName } = reqInfo
-  console.log("无日期目录:", cleanDir, "文件名:", fileName)
-
-  // 查表获取真实带日期目录
   const realDir = cleanDirToRealDir.get(cleanDir)
   if (!realDir) {
-    console.log("匹配不到对应带日期目录")
+    log(`无匹配真实目录，查询key:${cleanDir}`)
     showError()
     return
   }
-  console.log("匹配到真实目录:", realDir)
-
-  // 校验文件真实存在
+  log("匹配真实带日期目录："+realDir)
   if (!fileExists(realDir, fileName)) {
-    console.log("目录存在，但文件不存在")
+    log("目录存在，但对应图片文件不存在")
     showError()
     return
   }
-
-  // 拼接真实图片直链，自动跳转
   const targetUrl = `${location.origin}${ALBUM_BASE}${realDir}/${fileName}`
-  console.log("跳转真实图片地址:", targetUrl)
+  log("跳转真实图片地址："+targetUrl)
   location.href = targetUrl
 }
 
-// 展示404错误界面
 function showError() {
   document.getElementById("loadingDom").style.display = "none"
   document.getElementById("errorDom").style.display = "block"
 }
-
-// 启动执行匹配
 runRedirect()
 </script>
 </body>
