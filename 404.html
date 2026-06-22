@@ -32,7 +32,7 @@ body{
   border-radius:6px;
 }
 #errorDom{display:none;}
-#tip-log{margin-top:15px;font-size:12px;color:#999;word-break:break-all}
+#tip-log{margin-top:15px;font-size:12px;color:#999;word-break:break-all;text-align:left;max-width:600px}
 </style>
 </head>
 <body>
@@ -55,7 +55,6 @@ function log(text){
   console.log(text)
 }
 
-// 修复：独立html页面glob扫描路径，使用项目根绝对匹配
 const allImageGlobPaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp,avif}', { eager: false }))
 log("扫描到全部资源数量："+allImageGlobPaths.length)
 
@@ -77,19 +76,23 @@ function buildFullIndex() {
       cleanDirToRealDir.set(cleanDirPath, realDirPath)
     }
   })
+  log("目录映射表所有key列表：\n" + Array.from(cleanDirToRealDir.keys()).join("\n"))
   log("目录映射表总数："+cleanDirToRealDir.size)
 }
 
 function parseRequestUrl() {
   const path = location.pathname
-  log("当前访问路径："+path)
+  log("当前访问原始路径："+path)
   if (!path.startsWith(ALBUM_BASE)) return null
   const resourcePath = path.slice(ALBUM_BASE.length)
   const lastSlashIdx = resourcePath.lastIndexOf("/")
   if (lastSlashIdx <= 0) return null
-  const cleanDir = resourcePath.slice(0, lastSlashIdx)
+  // 核心修复：URL解码中文目录，消除%xx编码字符
+  const rawCleanDir = resourcePath.slice(0, lastSlashIdx)
+  const cleanDir = decodeURIComponent(rawCleanDir)
   const fileName = resourcePath.slice(lastSlashIdx + 1)
-  log(`拆分目录:${cleanDir} 文件:${fileName}`)
+  log(`编码原始目录:${rawCleanDir}`)
+  log(`解码后目录:${cleanDir} 文件:${fileName}`)
   return { cleanDir, fileName }
 }
 
@@ -100,7 +103,6 @@ function fileExists(realDir, fileName) {
 
 function runRedirect() {
   buildFullIndex()
-  // 无任何资源直接报错
   if(allImageGlobPaths.length === 0){
     log("致命错误：未扫描到任何图片文件，请检查public/albums目录")
     showError()
