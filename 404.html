@@ -87,18 +87,26 @@ function parseRequestUrl() {
   const resourcePath = path.slice(ALBUM_BASE.length)
   const lastSlashIdx = resourcePath.lastIndexOf("/")
   if (lastSlashIdx <= 0) return null
-  // 核心修复：URL解码中文目录，消除%xx编码字符
+
+  // 解码目录
   const rawCleanDir = resourcePath.slice(0, lastSlashIdx)
   const cleanDir = decodeURIComponent(rawCleanDir)
-  const fileName = resourcePath.slice(lastSlashIdx + 1)
+  // 新增：解码文件名，解决中文文件名编码不匹配
+  const rawFileName = resourcePath.slice(lastSlashIdx + 1)
+  const fileName = decodeURIComponent(rawFileName)
+
   log(`编码原始目录:${rawCleanDir}`)
-  log(`解码后目录:${cleanDir} 文件:${fileName}`)
+  log(`解码后目录:${cleanDir}`)
+  log(`编码原始文件名:${rawFileName}`)
+  log(`解码后文件名:${fileName}`)
   return { cleanDir, fileName }
 }
 
 function fileExists(realDir, fileName) {
   const fullRealRelPath = `${realDir}/${fileName}`
-  return allRealFilePaths.has(fullRealRelPath)
+  const exist = allRealFilePaths.has(fullRealRelPath)
+  log(`校验文件完整路径：${fullRealRelPath} 存在：${exist}`)
+  return exist
 }
 
 function runRedirect() {
@@ -127,7 +135,7 @@ function runRedirect() {
     showError()
     return
   }
-  const targetUrl = `${location.origin}${ALBUM_BASE}${realDir}/${fileName}`
+  const targetUrl = `${location.origin}${ALBUM_BASE}${realDir}/${encodeURIComponent(fileName)}`
   log("跳转真实图片地址："+targetUrl)
   location.href = targetUrl
 }
