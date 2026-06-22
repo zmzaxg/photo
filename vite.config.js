@@ -15,11 +15,12 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
-    // 新增：同时打包 index.html + admin.html
+    // 新增：同时打包 index.html + admin.html + 404.html（三者根目录同级）
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, 'index.html'),
-        admin: path.resolve(__dirname, 'admin.html')
+        admin: path.resolve(__dirname, 'admin.html'),
+        notfound: path.resolve(__dirname, '404.html') // 新增自定义404
       }
     }
   },
