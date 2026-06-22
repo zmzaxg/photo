@@ -161,7 +161,7 @@
       <img id="mainPreviewImg" class="main-preview-img" alt="预览图">
     </div>
     <div class="info-panel">
-      <div class="info-item"><strong>图片链接：</strong></div>
+      <div class="info-item"><strong>无日期前缀永久外链：</strong></div>
       <div class="link-box">
         <input type="text" id="imgLink" class="link-input" readonly>
         <button class="copy-btn" id="copyLink">一键复制</button>
@@ -204,21 +204,66 @@
     const viewerSourceWrap = document.getElementById('viewerSourceWrap')
 
     let dirTree = new Map()
+    // 全局缓存所有真实目录段（带日期），用于纯前端路径匹配
+    let allRealDirSegments = new Set()
     const allImagePaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
     const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
 
+    // 移除单段目录的日期前缀
     function pureDirName(fullName) {
       const match = fullName.match(FOLDER_DATE_REG)
       return match ? match[2] : fullName
     }
 
-    function getAssetUrl(dirPath, fileName) {
+    // 纯前端反向匹配：根据干净无日期路径，查找真实带日期目录路径
+    function getRealDirFromCleanPath(cleanDirPath) {
+      if (!cleanDirPath) return ''
+      const cleanSegs = cleanDirPath.split('/')
+      // 递归逐层匹配真实目录
+      function matchLayer(segIndex, realParentPath) {
+        if (segIndex >= cleanSegs.length) return realParentPath
+        const targetCleanName = cleanSegs[segIndex]
+        // 遍历所有缓存的真实目录
+        for (const realFullDir of allRealDirSegments) {
+          const realSegs = realFullDir.split('/')
+          if (realSegs.length !== segIndex + 1) continue
+          const parentSegs = realSegs.slice(0, segIndex).join('/')
+          if (parentSegs !== realParentPath) continue
+          const lastSeg = realSegs[realSegs.length - 1]
+          if (pureDirName(lastSeg) === targetCleanName) {
+            return matchLayer(segIndex + 1, realFullDir)
+          }
+        }
+        return null
+      }
+      return matchLayer(0, '')
+    }
+
+    // 真实带日期路径：页面内部加载图片使用
+    function realAssetUrl(dirPath, fileName) {
       const safeDir = dirPath ? dirPath + '/' : ''
       return ALBUM_BASE + safeDir + fileName
     }
 
+    // 清洗全路径所有层级日期前缀，生成对外永久外链
+    function stripDatePrefixFromPath(dirPath) {
+      if (!dirPath) return ''
+      const segments = dirPath.split('/')
+      const cleanSegments = segments.map(seg => pureDirName(seg))
+      return cleanSegments.join('/')
+    }
+
+    // 输出无日期完整外链
+    function getPublicCleanUrl(dirPath, fileName) {
+      const cleanDir = stripDatePrefixFromPath(dirPath)
+      const cleanPath = cleanDir ? `${ALBUM_BASE}${cleanDir}/${fileName}` : `${ALBUM_BASE}${fileName}`
+      return location.origin + cleanPath
+    }
+
+    // 构建目录树 + 缓存全部真实目录段用于前端路径匹配
     function buildDirectoryTree() {
       dirTree.clear()
+      allRealDirSegments.clear()
       dirTree.set('', { isDir: true, children: [], files: [] })
       for (const globPath of allImagePaths) {
         const relFull = globPath.replace('/public/albums/', '')
@@ -229,6 +274,7 @@
           const seg = pathSegments[segIdx]
           const parentPath = tempPath
           tempPath = tempPath ? tempPath + '/' + seg : seg
+          allRealDirSegments.add(tempPath)
           if (!dirTree.has(tempPath)) {
             dirTree.set(tempPath, { isDir: true, children: [], files: [] })
             dirTree.get(parentPath).children.push(tempPath)
@@ -241,7 +287,7 @@
     function getDirCoverThumb(dirPath) {
       const node = dirTree.get(dirPath)
       if (!node) return null
-      if (node.files.length > 0) return getAssetUrl(dirPath, node.files[0])
+      if (node.files.length > 0) return realAssetUrl(dirPath, node.files[0])
       for (const childDir of node.children) {
         const childThumb = getDirCoverThumb(childDir)
         if (childThumb) return childThumb
@@ -255,29 +301,25 @@
       return { dir: params.get('dir') || '', photo: params.get('photo') }
     }
 
-    // 仅局部刷新页面图片信息，完全不修改地址栏hash
     async function refreshLocalInfo(dir, fileName) {
-      const url = getAssetUrl(dir, fileName)
-      imgLink.value = location.origin + url
+      imgLink.value = getPublicCleanUrl(dir, fileName)
       detailFileName.innerText = fileName
-      mainPreviewImg.src = url
-      const exif = await parseExif(url)
+      const realUrl = realAssetUrl(dir, fileName)
+      mainPreviewImg.src = realUrl
+      const exif = await parseExif(realUrl)
       document.getElementById('exifTime').innerText = exif.takeTime
       document.getElementById('exifCamera').innerText = exif.camera
       document.getElementById('exifParam').innerText = exif.expStr
       document.getElementById('exifGps').innerText = exif.gpsStr
     }
 
-    // 纯内存切换图片，无任何hash修改
     function switchImageIndex(newIndex) {
       if (currentDirPhotoList.length <= 1) return
       if (newIndex < 0) newIndex = currentDirPhotoList.length - 1
       if (newIndex >= currentDirPhotoList.length) newIndex = 0
       currentPhotoIndex = newIndex
       const targetFile = currentDirPhotoList[currentPhotoIndex]
-      // 只刷新页面本地信息，不碰URL
       refreshLocalInfo(currentDirPath, targetFile)
-      // Viewer打开状态同步弹窗内图片，不销毁弹窗
       if (viewer && viewerIsOpen) {
         viewer.view(currentPhotoIndex)
       }
@@ -290,13 +332,12 @@
       switchImageIndex(currentPhotoIndex + 1)
     }
 
-    // 初始化Viewer，全程不改动地址栏
     function initViewer() {
       if (!viewer) {
         viewerSourceWrap.innerHTML = ''
         currentDirPhotoList.forEach(name => {
           const img = document.createElement('img')
-          img.src = getAssetUrl(currentDirPath, name)
+          img.src = realAssetUrl(currentDirPath, name)
           img.alt = name
           viewerSourceWrap.appendChild(img)
         })
@@ -317,7 +358,6 @@
           url: 'src',
           shown: () => viewerIsOpen = true,
           hidden: () => viewerIsOpen = false,
-          // Viewer内切换仅刷新本地信息，完全不操作hash
           view: (event) => {
             const newIdx = event.detail.index
             if (newIdx === currentPhotoIndex) return
@@ -330,14 +370,28 @@
       viewer.view(currentPhotoIndex)
     }
 
-    // 页面切换（仅进入相册/返回目录时执行，仅首次打开图片写入hash）
+    // 解析地址栏直接粘贴的无日期图片链接
+    function parseCleanUrlFromBrowser() {
+      const pathname = location.pathname
+      if (!pathname.startsWith(ALBUM_BASE)) return null
+      const rest = pathname.slice(ALBUM_BASE.length)
+      const lastSlash = rest.lastIndexOf('/')
+      if(lastSlash === -1) return null
+      const cleanDir = rest.slice(0, lastSlash)
+      const fileName = rest.slice(lastSlash + 1)
+      const realDir = getRealDirFromCleanPath(cleanDir)
+      if(!realDir || !dirTree.has(realDir)) return null
+      const fileList = dirTree.get(realDir).files
+      if(!fileList.includes(fileName)) return null
+      return {dir: realDir, photo: fileName}
+    }
+
     function switchPage({ dir, photo }) {
       gridPage.style.display = 'none'
       detailPage.style.display = 'none'
       currentDirPath = dir
       backRow.style.display = dir || photo ? 'block' : 'none'
 
-      // 切换目录销毁Viewer
       if (viewer) {
         viewer.destroy()
         viewer = null
@@ -356,7 +410,6 @@
       }
     }
 
-    // 返回按钮逻辑（仅目录跳转才修改hash，图片切换完全不动hash）
     backBtn.addEventListener('click', () => {
       const { photo, dir } = parseHash()
       if (photo) {
@@ -378,9 +431,9 @@
     copyLink.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(imgLink.value)
-        alert('复制成功')
+        alert('复制成功！该链接无日期前缀，修改文件夹日期也不会失效')
       } catch {
-        alert('复制失败，请手动复制')
+        alert('复制失败，请手动复制输入框链接')
       }
     })
 
@@ -467,7 +520,7 @@
         itemGrid.appendChild(card)
       }
       for (const fileName of photoFileList) {
-        const imgSrc = getAssetUrl(dirPath, fileName)
+        const imgSrc = realAssetUrl(dirPath, fileName)
         const card = document.createElement('div')
         card.className = 'grid-card'
         createThumbnail(imgSrc, thumbData => {
@@ -477,7 +530,6 @@
             <div class="card-name">${fileName}</div>
           `
         })
-        // 仅首次进入详情页写入一次hash，后续切换完全不动地址栏
         card.addEventListener('click', () => {
           location.hash = `dir=${encodeURIComponent(dirPath)}&photo=${encodeURIComponent(fileName)}`
         })
@@ -490,9 +542,7 @@
       switchPage(parseHash())
     })
 
-    // hash变化仅在切换相册/返回时生效；图片切换完全不触发hash变更
     window.addEventListener('hashchange', () => {
-      // 弹窗打开时，直接忽略hash变更，不刷新页面
       if (viewerIsOpen) return
       switchPage(parseHash())
     })
@@ -500,8 +550,14 @@
     window.onload = () => {
       showDate = homeToggleDate.checked
       buildDirectoryTree()
-      switchPage(parseHash())
+      // 优先检测地址栏直接粘贴的无日期图片路径
+      const cleanUrlMatch = parseCleanUrlFromBrowser()
+      if(cleanUrlMatch) {
+        switchPage(cleanUrlMatch)
+      } else {
+        switchPage(parseHash())
+      }
     }
   </script>
 </body>
-</html> 
+</html>
