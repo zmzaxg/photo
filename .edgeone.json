@@ -1,10 +1,17 @@
 {
   "version": 3,
   "routes": [
+    // 所有albums下缺失资源，指向同级404.html，返回404状态码
+    {
+      "src": "/albums/(.*)",
+      "dest": "/404.html",
+      "status": 404
+    },
     {
       "src": "/admin.html",
       "dest": "/admin.html"
     },
+    // 其余SPA页面路由走首页
     {
       "src": "/*",
       "dest": "/index.html"
