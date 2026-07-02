@@ -25,33 +25,32 @@
       font-size: 14px;
     }
 
-    /* 纯瀑布流，全程column，不切换Grid，平衡列消除末尾空白 */
+    /* JS瀑布流容器：相对定位，卡片绝对定位 */
     .masonry-wrap {
       max-width: 1400px;
       margin: 0 auto;
-      column-width: 220px;
-      column-gap: 24px;
-      column-fill: balance; /* 自动平衡每列高度，大幅减少末尾空白 */
+      position: relative;
+      width: 100%;
     }
     .grid-card {
-      position: relative;
+      position: absolute;
+      width: calc(25% - 18px);
       background: #fff;
       border-radius: 8px;
       overflow: hidden;
-      margin-bottom: 24px;
-      break-inside: avoid; /* 卡片完整不截断 */
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       transition: transform 0.2s;
     }
-    .grid-card:hover { transform: translateY(-4px); }
+    @media (max-width: 1200px) { .grid-card { width: calc(33.333% - 16px); } }
+    @media (max-width: 900px) { .grid-card { width: calc(50% - 12px); } }
+    @media (max-width: 600px) { .grid-card { width: 100%; } }
+    .grid-card:hover { transform: translateY(-4px); z-index: 10; }
 
-    /* 核心修复：缩略图不拉伸，保持原图比例 */
+    /* 图片填充卡片，不变形 */
     .card-thumb {
       width: 100%;
-      height: auto;
       display: block;
-      object-fit: contain; /* 完整显示图片，不拉伸 */
-      background: #fafafa;
+      object-fit: cover;
     }
 
     /* 卡片底部信息栏：头像+名称+三点按钮 */
@@ -179,7 +178,6 @@
       font-size:16px;
     }
     .viewer-source-wrap { display:none; }
-    /* 移除旧版标签样式 */
     .type-badge { display: none; }
   </style>
 </head>
@@ -200,7 +198,6 @@
     <button class="back-btn" id="backBtn">← 返回上一级</button>
   </div>
 
-  <!-- 纯瀑布流容器 -->
   <div id="gridPage">
     <div class="masonry-wrap" id="itemGrid"></div>
   </div>
@@ -236,14 +233,15 @@
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
   <script type="module">
     const ALBUM_BASE = '/albums/'
-    // 自适应缩略图基准宽度，按原图比例输出，不会拉伸
     const THUMB_BASE_W = 240
+    const GAP = 24 // 卡片间距
     let showDate = false
     let currentDirPath = ''
     let currentPhotoIndex = 0
     let currentDirPhotoList = []
     let viewer = null
     let viewerIsOpen = false
+    let allCards = [] // 缓存所有卡片用于JS瀑布流重排
 
     const gridPage = document.getElementById('gridPage')
     const detailPage = document.getElementById('detailPage')
@@ -266,13 +264,11 @@
     const allImagePaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
     const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
 
-    // 移除单段目录的日期前缀
     function pureDirName(fullName) {
       const match = fullName.match(FOLDER_DATE_REG)
       return match ? match[2] : fullName
     }
 
-    // 纯前端反向匹配：根据干净无日期路径，查找真实带日期目录路径
     function getRealDirFromCleanPath(cleanDirPath) {
       if (!cleanDirPath) return ''
       const cleanSegs = cleanDirPath.split('/')
@@ -294,13 +290,11 @@
       return matchLayer(0, '')
     }
 
-    // 真实带日期路径：页面内部加载图片使用
     function realAssetUrl(dirPath, fileName) {
       const safeDir = dirPath ? dirPath + '/' : ''
       return ALBUM_BASE + safeDir + fileName
     }
 
-    // 清洗全路径所有层级日期前缀，生成对外永久外链
     function stripDatePrefixFromPath(dirPath) {
       if (!dirPath) return ''
       const segments = dirPath.split('/')
@@ -308,14 +302,12 @@
       return cleanSegments.join('/')
     }
 
-    // 输出无日期完整外链
     function getPublicCleanUrl(dirPath, fileName) {
       const cleanDir = stripDatePrefixFromPath(dirPath)
       const cleanPath = cleanDir ? `${ALBUM_BASE}${cleanDir}/${fileName}` : `${ALBUM_BASE}${fileName}`
       return location.origin + cleanPath
     }
 
-    // 构建目录树 + 缓存全部真实目录段用于前端路径匹配
     function buildDirectoryTree() {
       dirTree.clear()
       allRealDirSegments.clear()
@@ -425,7 +417,6 @@
       viewer.view(currentPhotoIndex)
     }
 
-    // 解析地址栏直接粘贴的无日期图片链接
     function parseCleanUrlFromBrowser() {
       const pathname = location.pathname
       if (!pathname.startsWith(ALBUM_BASE)) return null
@@ -492,14 +483,12 @@
       }
     })
 
-    // 自适应缩略图生成：严格等比例画布，不拉伸原图
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
-        // 基准宽度，高度自动按原图比例计算
         const scale = THUMB_BASE_W / img.width
         canvas.width = THUMB_BASE_W
         canvas.height = img.height * scale
@@ -546,9 +535,45 @@
       })
     }
 
-    // 渲染瀑布流卡片，新增三点菜单逻辑
+    // JS瀑布流重排核心函数
+    function layoutMasonry() {
+      if (!allCards.length) return
+      const wrapWidth = itemGrid.clientWidth
+      // 计算列数
+      let colCount
+      if (wrapWidth >= 1200) colCount = 4
+      else if (wrapWidth >= 900) colCount = 3
+      else if (wrapWidth >= 600) colCount = 2
+      else colCount = 1
+      const colWidth = (wrapWidth - GAP * (colCount - 1)) / colCount
+      // 记录每列当前高度
+      const colHeights = new Array(colCount).fill(0)
+
+      allCards.forEach(card => {
+        // 找高度最小的列
+        let minCol = 0
+        let minHeight = colHeights[0]
+        for (let i = 1; i < colCount; i++) {
+          if (colHeights[i] < minHeight) {
+            minHeight = colHeights[i]
+            minCol = i
+          }
+        }
+        // 设置卡片位置
+        card.style.width = colWidth + 'px'
+        card.style.left = (minCol * (colWidth + GAP)) + 'px'
+        card.style.top = minHeight + 'px'
+        // 更新列高度
+        const cardH = card.offsetHeight
+        colHeights[minCol] += cardH + GAP
+      })
+      // 容器高度等于最高列
+      itemGrid.style.height = Math.max(...colHeights) + 'px'
+    }
+
     function renderMixedItemGrid(dirPath) {
       itemGrid.innerHTML = ''
+      allCards = []
       const node = dirTree.get(dirPath)
       const childDirList = node.children
       const photoFileList = node.files
@@ -557,7 +582,6 @@
         return
       }
 
-      // 全局点击空白关闭所有菜单
       document.body.onclick = () => {
         document.querySelectorAll('.card-menu').forEach(m => m.classList.remove('show'))
       }
@@ -570,7 +594,6 @@
         const coverImg = getDirCoverThumb(childFullDir)
         const card = document.createElement('div')
         card.className = 'grid-card'
-        // 存储卡片数据供菜单调用
         card.dataset.type = 'folder'
         card.dataset.path = childFullDir
 
@@ -582,7 +605,6 @@
               <div class="card-text" title="${displayName}">${displayName}</div>
               <button class="more-btn">⋯</button>
             </div>
-            <!-- 下拉操作菜单 -->
             <div class="card-menu">
               <div class="menu-item view-detail">查看详情</div>
               <div class="menu-item copy-link">复制图片直连</div>
@@ -590,8 +612,12 @@
             </div>
           `
           bindCardEvent(card, childFullDir, null)
+          itemGrid.appendChild(card)
+          allCards.push(card)
+          // 图片加载完成重排
+          card.querySelector('.card-thumb').onload = layoutMasonry
+          layoutMasonry()
         })
-        itemGrid.appendChild(card)
       }
 
       // 渲染图片卡片
@@ -618,12 +644,14 @@
             </div>
           `
           bindCardEvent(card, dirPath, fileName)
+          itemGrid.appendChild(card)
+          allCards.push(card)
+          card.querySelector('.card-thumb').onload = layoutMasonry
+          layoutMasonry()
         })
-        itemGrid.appendChild(card)
       }
     }
 
-    // 绑定卡片所有交互：图片跳转、三点菜单、菜单功能
     function bindCardEvent(card, dir, photoName) {
       const thumb = card.querySelector('.card-thumb')
       const moreBtn = card.querySelector('.more-btn')
@@ -631,27 +659,21 @@
       const viewDetail = menu.querySelector('.view-detail')
       const copyLinkBtn = menu.querySelector('.copy-link')
 
-      // 点击图片区域正常跳转
       thumb.addEventListener('click', (e) => {
         e.stopPropagation()
         if (!photoName) {
-          // 文件夹进入子目录
           location.hash = `dir=${encodeURIComponent(dir)}`
         } else {
-          // 图片进入详情页
           location.hash = `dir=${encodeURIComponent(dir)}&photo=${encodeURIComponent(photoName)}`
         }
       })
 
-      // 点击三点按钮 切换菜单显示，阻止冒泡
       moreBtn.addEventListener('click', (e) => {
         e.stopPropagation()
-        // 先关闭其他所有菜单
         document.querySelectorAll('.card-menu').forEach(m => m.classList.remove('show'))
         menu.classList.toggle('show')
       })
 
-      // 查看详情
       viewDetail.addEventListener('click', (e) => {
         e.stopPropagation()
         menu.classList.remove('show')
@@ -662,7 +684,6 @@
         }
       })
 
-      // 复制无日期永久外链
       copyLinkBtn.addEventListener('click', async (e) => {
         e.stopPropagation()
         menu.classList.remove('show')
@@ -689,6 +710,9 @@
       if (viewerIsOpen) return
       switchPage(parseHash())
     })
+
+    // 窗口缩放自动重排瀑布流
+    window.addEventListener('resize', layoutMasonry)
 
     window.onload = () => {
       showDate = homeToggleDate.checked
