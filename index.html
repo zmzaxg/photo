@@ -34,7 +34,6 @@
     }
     .grid-card {
       position: absolute;
-      width: calc(25% - 18px);
       background: #fff;
       border-radius: 8px;
       overflow: hidden;
@@ -242,6 +241,8 @@
     let viewer = null
     let viewerIsOpen = false
     let allCards = [] // 缓存所有卡片用于JS瀑布流重排
+    let loadImgCount = 0 // 已加载图片计数
+    let totalImgCount = 0 // 总图片数量
 
     const gridPage = document.getElementById('gridPage')
     const detailPage = document.getElementById('detailPage')
@@ -574,6 +575,8 @@
     function renderMixedItemGrid(dirPath) {
       itemGrid.innerHTML = ''
       allCards = []
+      loadImgCount = 0
+      totalImgCount = 0
       const node = dirTree.get(dirPath)
       const childDirList = node.children
       const photoFileList = node.files
@@ -581,6 +584,8 @@
         itemGrid.innerHTML = '<div class="empty-tip">当前目录无相册文件夹、无图片文件</div>'
         return
       }
+      // 统计全部卡片数量
+      totalImgCount = childDirList.length + photoFileList.length
 
       document.body.onclick = () => {
         document.querySelectorAll('.card-menu').forEach(m => m.classList.remove('show'))
@@ -614,9 +619,11 @@
           bindCardEvent(card, childFullDir, null)
           itemGrid.appendChild(card)
           allCards.push(card)
-          // 图片加载完成重排
-          card.querySelector('.card-thumb').onload = layoutMasonry
-          layoutMasonry()
+          // 单张图片加载完成计数，全部加载完再统一布局
+          card.querySelector('.card-thumb').onload = () => {
+            loadImgCount++
+            if (loadImgCount >= totalImgCount) layoutMasonry()
+          }
         })
       }
 
@@ -646,8 +653,10 @@
           bindCardEvent(card, dirPath, fileName)
           itemGrid.appendChild(card)
           allCards.push(card)
-          card.querySelector('.card-thumb').onload = layoutMasonry
-          layoutMasonry()
+          card.querySelector('.card-thumb').onload = () => {
+            loadImgCount++
+            if (loadImgCount >= totalImgCount) layoutMasonry()
+          }
         })
       }
     }
