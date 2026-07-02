@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的相册</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/viewerjs@1.11.6/dist/viewer.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/viewerjs@1.11.6/dist/viewer.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap:12px; }
+    .admin-link a { color: #2563eb; text-decoration: none; font-size: 14px; }
+    .date-switch { font-size:14px; }
+    h1 { color: #333; font-size:24px; }
+
+    .back-row { margin-bottom:20px; display:none; }
+    .back-btn {
+      padding: 8px 16px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .item-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .grid-card {
+      position: relative;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: transform 0.2s;
+    }
+    .grid-card:hover { transform: translateY(-4px); }
+    .type-badge {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 2;
+    }
+    .card-thumb {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      display: block;
+    }
+    .card-name {
+      padding: 12px;
+      text-align: center;
+      color: #444;
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
+    .detail-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap:12px;
+      flex-wrap: wrap;
+    }
+    .switch-group button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size:14px;
+      margin:0 4px;
+    }
+    .prev-btn { background:#60a5fa; color:#fff; }
+    .next-btn { background:#60a5fa; color:#fff; }
+    .open-viewer-btn { background:#10b981; color:#fff; }
+
+    .main-img-box {
+      position: relative;
+      margin: 0 auto 20px;
+      max-width: 90vw;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #000;
+      cursor: zoom-in;
+    }
+    .main-preview-img { max-width: 90vw; display:block; }
+
+    .info-panel {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .info-item { margin: 8px 0; font-size: 14px; color: #333; }
+    .link-box { display: flex; gap: 8px; margin-top: 16px; }
+    .link-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+    .copy-btn {
+      padding: 8px 16px;
+      background: #10b981;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .empty-tip {
+      width:100%;
+      text-align:center;
+      padding:60px 20px;
+      color:#777;
+      font-size:16px;
+    }
+    .viewer-source-wrap { display:none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>我的相册</h1>
+    <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+      <label class="date-switch">
+        <input type="checkbox" id="homeToggleDate"> 显示文件夹日期前缀
+      </label>
+      <div class="admin-link">
+        <a href="/admin.html">🔐 管理后台</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="back-row" id="backRow">
+    <button class="back-btn" id="backBtn">← 返回上一级</button>
+  </div>
+
+  <div id="gridPage">
+    <div class="item-grid" id="itemGrid"></div>
+  </div>
+
+  <div id="detailPage" class="detail-container">
+    <div class="detail-top-bar">
+      <div class="switch-group">
+        <button class="prev-btn" id="prevImgBtn">上一张 ◀</button>
+        <button class="next-btn" id="nextImgBtn">下一张 ▶</button>
+        <button class="open-viewer-btn" id="openViewerBtn">全屏查看(Viewer)</button>
+        <span style="font-size:13px;color:#666;margin-left:10px;">切换图片不改动地址栏，Viewer窗口常驻不关闭</span>
+      </div>
+    </div>
+    <div class="main-img-box" id="mainImgBox">
+      <img id="mainPreviewImg" class="main-preview-img" alt="预览图">
+    </div>
+    <div class="info-panel">
+      <div class="info-item"><strong>无日期前缀永久外链：</strong></div>
+      <div class="link-box">
+        <input type="text" id="imgLink" class="link-input" readonly>
+        <button class="copy-btn" id="copyLink">一键复制</button>
+      </div>
+      <div class="info-item"><strong>完整文件名：</strong><span id="detailFileName">暂无</span></div>
+      <div class="info-item"><strong>EXIF 拍摄时间：</strong><span id="exifTime">暂无</span></div>
+      <div class="info-item"><strong>相机型号：</strong><span id="exifCamera">暂无</span></div>
+      <div class="info-item"><strong>曝光参数：</strong><span id="exifParam">暂无</span></div>
+      <div class="info-item"><strong>GPS 坐标：</strong><span id="exifGps">暂无</span></div>
+    </div>
+  </div>
+
+  <div class="viewer-source-wrap" id="viewerSourceWrap"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
+  <script type="module">
+    const ALBUM_BASE = '/albums/'
+    const THUMB_SIZE = { w: 200, h: 150 }
+    let showDate = false
+    let currentDirPath = ''
+    let currentPhotoIndex = 0
+    let currentDirPhotoList = []
+    let viewer = null
+    let viewerIsOpen = false
+
+    const gridPage = document.getElementById('gridPage')
+    const detailPage = document.getElementById('detailPage')
+    const backRow = document.getElementById('backRow')
+    const backBtn = document.getElementById('backBtn')
+    const itemGrid = document.getElementById('itemGrid')
+    const mainPreviewImg = document.getElementById('mainPreviewImg')
+    const mainImgBox = document.getElementById('mainImgBox')
+    const imgLink = document.getElementById('imgLink')
+    const copyLink = document.getElementById('copyLink')
+    const detailFileName = document.getElementById('detailFileName')
+    const homeToggleDate = document.getElementById('homeToggleDate')
+    const prevImgBtn = document.getElementById('prevImgBtn')
+    const nextImgBtn = document.getElementById('nextImgBtn')
+    const openViewerBtn = document.getElementById('openViewerBtn')
+    const viewerSourceWrap = document.getElementById('viewerSourceWrap')
+
+    let dirTree = new Map()
+    // 全局缓存所有真实目录段（带日期），用于纯前端路径匹配
+    let allRealDirSegments = new Set()
+    const allImagePaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
+    const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
+
+    // 移除单段目录的日期前缀
+    function pureDirName(fullName) {
+      const match = fullName.match(FOLDER_DATE_REG)
+      return match ? match[2] : fullName
+    }
+
+    // 纯前端反向匹配：根据干净无日期路径，查找真实带日期目录路径
+    function getRealDirFromCleanPath(cleanDirPath) {
+      if (!cleanDirPath) return ''
+      const cleanSegs = cleanDirPath.split('/')
+      // 递归逐层匹配真实目录
+      function matchLayer(segIndex, realParentPath) {
+        if (segIndex >= cleanSegs.length) return realParentPath
+        const targetCleanName = cleanSegs[segIndex]
+        // 遍历所有缓存的真实目录
+        for (const realFullDir of allRealDirSegments) {
+          const realSegs = realFullDir.split('/')
+          if (realSegs.length !== segIndex + 1) continue
+          const parentSegs = realSegs.slice(0, segIndex).join('/')
+          if (parentSegs !== realParentPath) continue
+          const lastSeg = realSegs[realSegs.length - 1]
+          if (pureDirName(lastSeg) === targetCleanName) {
+            return matchLayer(segIndex + 1, realFullDir)
+          }
+        }
+        return null
+      }
+      return matchLayer(0, '')
+    }
+
+    // 真实带日期路径：页面内部加载图片使用
+    function realAssetUrl(dirPath, fileName) {
+      const safeDir = dirPath ? dirPath + '/' : ''
+      return ALBUM_BASE + safeDir + fileName
+    }
+
+    // 清洗全路径所有层级日期前缀，生成对外永久外链
+    function stripDatePrefixFromPath(dirPath) {
+      if (!dirPath) return ''
+      const segments = dirPath.split('/')
+      const cleanSegments = segments.map(seg => pureDirName(seg))
+      return cleanSegments.join('/')
+    }
+
+    // 输出无日期完整外链
+    function getPublicCleanUrl(dirPath, fileName) {
+      const cleanDir = stripDatePrefixFromPath(dirPath)
+      const cleanPath = cleanDir ? `${ALBUM_BASE}${cleanDir}/${fileName}` : `${ALBUM_BASE}${fileName}`
+      return location.origin + cleanPath
+    }
+
+    // 构建目录树 + 缓存全部真实目录段用于前端路径匹配
+    function buildDirectoryTree() {
+      dirTree.clear()
+      allRealDirSegments.clear()
+      dirTree.set('', { isDir: true, children: [], files: [] })
+      for (const globPath of allImagePaths) {
+        const relFull = globPath.replace('/public/albums/', '')
+        const pathSegments = relFull.split('/')
+        const fileName = pathSegments.pop()
+        let tempPath = ''
+        for (let segIdx = 0; segIdx < pathSegments.length; segIdx++) {
+          const seg = pathSegments[segIdx]
+          const parentPath = tempPath
+          tempPath = tempPath ? tempPath + '/' + seg : seg
+          allRealDirSegments.add(tempPath)
+          if (!dirTree.has(tempPath)) {
+            dirTree.set(tempPath, { isDir: true, children: [], files: [] })
+            dirTree.get(parentPath).children.push(tempPath)
+          }
+        }
+        dirTree.get(tempPath).files.push(fileName)
+      }
+    }
+
+    function getDirCoverThumb(dirPath) {
+      const node = dirTree.get(dirPath)
+      if (!node) return null
+      if (node.files.length > 0) return realAssetUrl(dirPath, node.files[0])
+      for (const childDir of node.children) {
+        const childThumb = getDirCoverThumb(childDir)
+        if (childThumb) return childThumb
+      }
+      return null
+    }
+
+    function parseHash() {
+      const hash = location.hash.slice(1)
+      const params = new URLSearchParams(hash)
+      return { dir: params.get('dir') || '', photo: params.get('photo') }
+    }
+
+    async function refreshLocalInfo(dir, fileName) {
+      imgLink.value = getPublicCleanUrl(dir, fileName)
+      detailFileName.innerText = fileName
+      const realUrl = realAssetUrl(dir, fileName)
+      mainPreviewImg.src = realUrl
+      const exif = await parseExif(realUrl)
+      document.getElementById('exifTime').innerText = exif.takeTime
+      document.getElementById('exifCamera').innerText = exif.camera
+      document.getElementById('exifParam').innerText = exif.expStr
+      document.getElementById('exifGps').innerText = exif.gpsStr
+    }
+
+    function switchImageIndex(newIndex) {
+      if (currentDirPhotoList.length <= 1) return
+      if (newIndex < 0) newIndex = currentDirPhotoList.length - 1
+      if (newIndex >= currentDirPhotoList.length) newIndex = 0
+      currentPhotoIndex = newIndex
+      const targetFile = currentDirPhotoList[currentPhotoIndex]
+      refreshLocalInfo(currentDirPath, targetFile)
+      if (viewer && viewerIsOpen) {
+        viewer.view(currentPhotoIndex)
+      }
+    }
+
+    function goPrevImage() {
+      switchImageIndex(currentPhotoIndex - 1)
+    }
+    function goNextImage() {
+      switchImageIndex(currentPhotoIndex + 1)
+    }
+
+    function initViewer() {
+      if (!viewer) {
+        viewerSourceWrap.innerHTML = ''
+        currentDirPhotoList.forEach(name => {
+          const img = document.createElement('img')
+          img.src = realAssetUrl(currentDirPath, name)
+          img.alt = name
+          viewerSourceWrap.appendChild(img)
+        })
+        viewer = new Viewer(viewerSourceWrap, {
+          inline: false,
+          backdrop: true,
+          navbar: true,
+          title: true,
+          toolbar: true,
+          tooltip: true,
+          movable: true,
+          zoomable: true,
+          rotatable: true,
+          scalable: true,
+          transition: true,
+          fullscreen: true,
+          keyboard: true,
+          url: 'src',
+          shown: () => viewerIsOpen = true,
+          hidden: () => viewerIsOpen = false,
+          view: (event) => {
+            const newIdx = event.detail.index
+            if (newIdx === currentPhotoIndex) return
+            currentPhotoIndex = newIdx
+            const targetName = currentDirPhotoList[newIdx]
+            refreshLocalInfo(currentDirPath, targetName)
+          }
+        })
+      }
+      viewer.view(currentPhotoIndex)
+    }
+
+    // 解析地址栏直接粘贴的无日期图片链接
+    function parseCleanUrlFromBrowser() {
+      const pathname = location.pathname
+      if (!pathname.startsWith(ALBUM_BASE)) return null
+      const rest = pathname.slice(ALBUM_BASE.length)
+      const lastSlash = rest.lastIndexOf('/')
+      if(lastSlash === -1) return null
+      const cleanDir = rest.slice(0, lastSlash)
+      const fileName = rest.slice(lastSlash + 1)
+      const realDir = getRealDirFromCleanPath(cleanDir)
+      if(!realDir || !dirTree.has(realDir)) return null
+      const fileList = dirTree.get(realDir).files
+      if(!fileList.includes(fileName)) return null
+      return {dir: realDir, photo: fileName}
+    }
+
+    function switchPage({ dir, photo }) {
+      gridPage.style.display = 'none'
+      detailPage.style.display = 'none'
+      currentDirPath = dir
+      backRow.style.display = dir || photo ? 'block' : 'none'
+
+      if (viewer) {
+        viewer.destroy()
+        viewer = null
+        viewerIsOpen = false
+      }
+
+      if (photo) {
+        detailPage.style.display = 'block'
+        const node = dirTree.get(dir)
+        currentDirPhotoList = node.files
+        currentPhotoIndex = currentDirPhotoList.findIndex(n => n === photo)
+        refreshLocalInfo(dir, photo)
+      } else {
+        gridPage.style.display = 'block'
+        renderMixedItemGrid(dir)
+      }
+    }
+
+    backBtn.addEventListener('click', () => {
+      const { photo, dir } = parseHash()
+      if (photo) {
+        location.hash = dir ? `dir=${encodeURIComponent(dir)}` : ''
+      } else {
+        if (!dir) return
+        const segList = dir.split('/')
+        segList.pop()
+        const parentDir = segList.join('/')
+        location.hash = parentDir ? `dir=${encodeURIComponent(parentDir)}` : ''
+      }
+    })
+
+    prevImgBtn.addEventListener('click', goPrevImage)
+    nextImgBtn.addEventListener('click', goNextImage)
+    openViewerBtn.addEventListener('click', initViewer)
+    mainImgBox.addEventListener('click', initViewer)
+
+    copyLink.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(imgLink.value)
+        alert('复制成功！该链接无日期前缀，修改文件夹日期也不会失效')
+      } catch {
+        alert('复制失败，请手动复制输入框链接')
+      }
+    })
+
+    function createThumbnail(imgSrc, callback) {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        canvas.width = THUMB_SIZE.w
+        canvas.height = THUMB_SIZE.h
+        const scale = Math.max(canvas.width / img.width, canvas.height / img.height)
+        const drawW = img.width * scale, drawH = img.height * scale
+        const x = (canvas.width - drawW) / 2, y = (canvas.height - drawH) / 2
+        ctx.drawImage(img, x, y, drawW, drawH)
+        callback(canvas.toDataURL('image/jpeg', 0.8))
+      }
+      img.onerror = () => {
+        const svg = `<svg width="${THUMB_SIZE.w}" height="${THUMB_SIZE.h}"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">无预览图</text></svg>`
+        callback(`data:image/svg+xml;utf8,${svg}`)
+      }
+      img.src = imgSrc
+    }
+
+    function parseExif(imgUrl) {
+      return new Promise(resolve => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => {
+          const exif = piexif.load(img.src)
+          const ifd0 = exif['0th'] || {}
+          const exifInfo = exif.Exif || {}
+          const gps = exif.GPS || {}
+          const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
+          const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
+          let exp = []
+          if (exifInfo[piexif.ExifIFD.FNumber]) {
+            const f = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])
+            exp.push(`光圈 f/${f}`)
+          }
+          if (exifInfo[piexif.ExifIFD.ExposureTime]) {
+            const s = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime])
+            exp.push(`快门 1/${Math.round(1 / s)}s`)
+          }
+          const expStr = exp.join(' ') || '暂无'
+          let gpsStr = '暂无'
+          if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
+            const lat = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLatitude])
+            const lon = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLongitude])
+            gpsStr = `纬度:${lat.toFixed(6)} 经度:${lon.toFixed(6)}`
+          }
+          resolve({ takeTime, camera, expStr, gpsStr })
+        }
+        img.src = imgUrl
+      })
+    }
+
+    function renderMixedItemGrid(dirPath) {
+      itemGrid.innerHTML = ''
+      const node = dirTree.get(dirPath)
+      const childDirList = node.children
+      const photoFileList = node.files
+      if (childDirList.length === 0 && photoFileList.length === 0) {
+        itemGrid.innerHTML = '<div class="empty-tip">当前目录无相册文件夹、无图片文件</div>'
+        return
+      }
+      for (const childFullDir of childDirList) {
+        const segArr = childFullDir.split('/')
+        const dirShortName = segArr[segArr.length - 1]
+        const displayName = showDate ? dirShortName : pureDirName(dirShortName)
+        const coverImg = getDirCoverThumb(childFullDir)
+        const card = document.createElement('div')
+        card.className = 'grid-card'
+        createThumbnail(coverImg, thumbData => {
+          card.innerHTML = `
+            <span class="type-badge">📁 相册</span>
+            <img class="card-thumb" src="${thumbData}">
+            <div class="card-name">${displayName}</div>
+          `
+        })
+        card.addEventListener('click', () => {
+          location.hash = `dir=${encodeURIComponent(childFullDir)}`
+        })
+        itemGrid.appendChild(card)
+      }
+      for (const fileName of photoFileList) {
+        const imgSrc = realAssetUrl(dirPath, fileName)
+        const card = document.createElement('div')
+        card.className = 'grid-card'
+        createThumbnail(imgSrc, thumbData => {
+          card.innerHTML = `
+            <span class="type-badge">🖼️ 图片</span>
+            <img class="card-thumb" src="${thumbData}">
+            <div class="card-name">${fileName}</div>
+          `
+        })
+        card.addEventListener('click', () => {
+          location.hash = `dir=${encodeURIComponent(dirPath)}&photo=${encodeURIComponent(fileName)}`
+        })
+        itemGrid.appendChild(card)
+      }
+    }
+
+    homeToggleDate.addEventListener('change', e => {
+      showDate = e.target.checked
+      switchPage(parseHash())
+    })
+
+    window.addEventListener('hashchange', () => {
+      if (viewerIsOpen) return
+      switchPage(parseHash())
+    })
+
+    window.onload = () => {
+      showDate = homeToggleDate.checked
+      buildDirectoryTree()
+      // 优先检测地址栏直接粘贴的无日期图片路径
+      const cleanUrlMatch = parseCleanUrlFromBrowser()
+      if(cleanUrlMatch) {
+        switchPage(cleanUrlMatch)
+      } else {
+        switchPage(parseHash())
+      }
+    }
+  </script>
+</body>
+</html>
