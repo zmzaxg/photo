@@ -25,10 +25,11 @@
       font-size: 14px;
     }
 
-    /* ========== 瀑布流布局 替换原有Grid ========== */
+    /* ========== 修复版混合布局：瀑布流+Grid兜底，解决末尾空白 ========== */
     .masonry-wrap {
       max-width: 1400px;
       margin: 0 auto;
+      /* 默认瀑布流 */
       column-width: 220px;
       column-gap: 24px;
     }
@@ -38,11 +39,24 @@
       border-radius: 8px;
       overflow: hidden;
       margin-bottom: 24px;
-      break-inside: avoid; /* 防止卡片跨列断裂 */
+      break-inside: avoid; /* 卡片不跨列断裂 */
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       transition: transform 0.2s;
     }
     .grid-card:hover { transform: translateY(-4px); }
+
+    /* 屏幕足够宽、卡片高度统一时切换Grid，彻底消除空白列 */
+    @media (min-width: 1200px) {
+      .masonry-wrap {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 24px;
+        column-width: unset;
+      }
+      .grid-card {
+        margin-bottom: 0;
+      }
+    }
 
     /* 自适应缩略图 取消固定高度 */
     .card-thumb {
@@ -197,7 +211,7 @@
     <button class="back-btn" id="backBtn">← 返回上一级</button>
   </div>
 
-  <!-- 瀑布流容器替换原item-grid -->
+  <!-- 瀑布流/Grid混合容器 -->
   <div id="gridPage">
     <div class="masonry-wrap" id="itemGrid"></div>
   </div>
