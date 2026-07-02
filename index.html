@@ -25,13 +25,13 @@
       font-size: 14px;
     }
 
-    /* ========== 修复版混合布局：瀑布流+Grid兜底，解决末尾空白 ========== */
+    /* 纯瀑布流，全程column，不切换Grid，平衡列消除末尾空白 */
     .masonry-wrap {
       max-width: 1400px;
       margin: 0 auto;
-      /* 默认瀑布流 */
       column-width: 220px;
       column-gap: 24px;
+      column-fill: balance; /* 自动平衡每列高度，大幅减少末尾空白 */
     }
     .grid-card {
       position: relative;
@@ -39,30 +39,19 @@
       border-radius: 8px;
       overflow: hidden;
       margin-bottom: 24px;
-      break-inside: avoid; /* 卡片不跨列断裂 */
+      break-inside: avoid; /* 卡片完整不截断 */
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       transition: transform 0.2s;
     }
     .grid-card:hover { transform: translateY(-4px); }
 
-    /* 屏幕足够宽、卡片高度统一时切换Grid，彻底消除空白列 */
-    @media (min-width: 1200px) {
-      .masonry-wrap {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 24px;
-        column-width: unset;
-      }
-      .grid-card {
-        margin-bottom: 0;
-      }
-    }
-
-    /* 自适应缩略图 取消固定高度 */
+    /* 核心修复：缩略图不拉伸，保持原图比例 */
     .card-thumb {
       width: 100%;
+      height: auto;
       display: block;
-      object-fit: cover;
+      object-fit: contain; /* 完整显示图片，不拉伸 */
+      background: #fafafa;
     }
 
     /* 卡片底部信息栏：头像+名称+三点按钮 */
@@ -211,7 +200,7 @@
     <button class="back-btn" id="backBtn">← 返回上一级</button>
   </div>
 
-  <!-- 瀑布流/Grid混合容器 -->
+  <!-- 纯瀑布流容器 -->
   <div id="gridPage">
     <div class="masonry-wrap" id="itemGrid"></div>
   </div>
@@ -247,7 +236,7 @@
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
   <script type="module">
     const ALBUM_BASE = '/albums/'
-    // 自适应缩略图基准宽度，不再固定宽高强制裁切
+    // 自适应缩略图基准宽度，按原图比例输出，不会拉伸
     const THUMB_BASE_W = 240
     let showDate = false
     let currentDirPath = ''
@@ -503,14 +492,14 @@
       }
     })
 
-    // 重写自适应缩略图生成：按原图比例生成，不再固定宽高裁切
+    // 自适应缩略图生成：严格等比例画布，不拉伸原图
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
-        // 按基准宽度等比例缩放高度，自适应原图比例
+        // 基准宽度，高度自动按原图比例计算
         const scale = THUMB_BASE_W / img.width
         canvas.width = THUMB_BASE_W
         canvas.height = img.height * scale
