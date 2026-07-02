@@ -11,6 +11,10 @@
       "dest": "/admin.html"
     },
     {
+      "src": "/1.html",
+      "dest": "/1.html"
+    },
+    {
       "src": "/*",
       "dest": "/index.html"
     }
