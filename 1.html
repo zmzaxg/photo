@@ -9,45 +9,52 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
+
+    /* 新增顶部搜索区域（和截图排版一致） */
+    .search-wrap {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .search-input-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-icon {
+      font-size: 16px;
+      color: #999;
+    }
+    #searchInput {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 14px;
+      padding: 4px 0;
+      background: transparent;
+    }
+    .search-tag-line {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .search-tag {
+      padding: 5px 10px;
+      background: #f2f3f5;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .search-tag:hover {
+      background: #e5e6eb;
+    }
+
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap:12px; }
     .admin-link a { color: #2563eb; text-decoration: none; font-size: 14px; }
     .date-switch { font-size:14px; }
     h1 { color: #333; font-size:24px; }
-
-    /* 新增顶部搜索区域 */
-    .search-top-wrap {
-      background: #fff;
-      border-radius: 12px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-    }
-    .search-input-row {
-      display: flex;
-      align-items: center;
-      gap:10px;
-    }
-    .search-icon { font-size:18px; color:#999; }
-    #globalSearch {
-      flex:1;
-      border:none;
-      outline:none;
-      font-size:15px;
-      padding:4px 0;
-    }
-    .search-tag-row {
-      display:flex;
-      gap:8px;
-      margin-top:10px;
-    }
-    .search-tag {
-      padding:5px 12px;
-      background:#f2f3f5;
-      border-radius:6px;
-      font-size:13px;
-      cursor:pointer;
-    }
-    .search-tag:hover { background:#e5e6eb; }
 
     .back-row { margin-bottom:20px; display:none; }
     .back-btn {
@@ -88,16 +95,18 @@
       font-size: 12px;
       z-index: 2;
     }
-    /* 修改：取消固定高度，自适应原图比例 */
-    .card-thumb-wrap {
-      width:100%;
-      overflow:hidden;
+
+    /* 改动：取消固定150px高度，自适应原图比例 */
+    .card-thumb-box {
+      width: 100%;
+      overflow: hidden;
     }
     .card-thumb {
       width: 100%;
       display: block;
       object-fit: cover;
     }
+
     .card-name {
       padding: 12px;
       text-align: center;
@@ -106,46 +115,50 @@
       word-break: break-all;
     }
 
-    /* 新增三点按钮+下拉菜单 */
-    .card-more-btn {
-      position:absolute;
-      top:8px;
-      right:8px;
-      width:28px;
-      height:28px;
-      border-radius:50%;
-      background:rgba(255,255,255,0.8);
-      border:none;
-      z-index:3;
-      cursor:pointer;
-      font-size:16px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+    /* 新增三点按钮与下拉菜单样式 */
+    .more-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.8);
+      border: none;
+      font-size: 16px;
+      z-index: 3;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    .card-more-btn:hover { background:#fff; }
+    .more-btn:hover {
+      background: #ffffff;
+    }
     .card-menu {
-      position:absolute;
-      top:36px;
-      right:8px;
-      background:#fff;
-      box-shadow:0 2px 12px rgba(0,0,0,0.12);
-      border-radius:8px;
-      width:160px;
-      z-index:999;
-      display:none;
+      position: absolute;
+      top: 36px;
+      right: 8px;
+      width: 160px;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      border-radius: 8px;
+      z-index: 999;
+      display: none;
     }
     .menu-item {
-      padding:10px 14px;
-      font-size:14px;
-      cursor:pointer;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
     }
-    .menu-item:hover { background:#f2f3f5; }
-    .menu-mask {
-      position:fixed;
-      inset:0;
-      z-index:998;
-      display:none;
+    .menu-item:hover {
+      background: #f2f3f5;
+    }
+    .mask-close-menu {
+      position: fixed;
+      inset: 0;
+      z-index: 998;
+      display: none;
     }
 
     .detail-container { display: none; max-width: 1400px; margin: 0 auto; }
@@ -209,13 +222,13 @@
   </style>
 </head>
 <body>
-  <!-- 新增全局搜索区域 -->
-  <div class="search-top-wrap">
-    <div class="search-input-row">
+  <!-- 新增顶部搜索栏（完全匹配截图布局） -->
+  <div class="search-wrap">
+    <div class="search-input-line">
       <span class="search-icon">🔍</span>
-      <input id="globalSearch" placeholder="搜索文件夹、图片名称">
+      <input id="searchInput" placeholder="搜索文件夹、图片名称">
     </div>
-    <div class="search-tag-row">
+    <div class="search-tag-line">
       <span class="search-tag">我的画板</span>
       <span class="search-tag">我的采集</span>
       <span class="search-tag">商用素材</span>
@@ -269,21 +282,20 @@
   </div>
 
   <div class="viewer-source-wrap" id="viewerSourceWrap"></div>
-  <!-- 菜单遮罩 -->
-  <div class="menu-mask" id="menuMask"></div>
+  <!-- 点击空白关闭菜单遮罩 -->
+  <div class="mask-close-menu" id="maskCloseMenu"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/piexif@1.7.1/dist/piexif.min.js"></script>
   <script type="module">
     const ALBUM_BASE = '/albums/'
-    const THUMB_MAX_W = 220
+    const THUMB_SIZE = { w: 220 } // 修改：仅限制宽度，高度自适应
     let showDate = false
     let currentDirPath = ''
     let currentPhotoIndex = 0
     let currentDirPhotoList = []
     let viewer = null
     let viewerIsOpen = false
-    // 新增全局搜索变量
-    let searchKeyword = ""
+    let searchKeyword = "" // 新增搜索关键词变量
 
     const gridPage = document.getElementById('gridPage')
     const detailPage = document.getElementById('detailPage')
@@ -300,31 +312,26 @@
     const nextImgBtn = document.getElementById('nextImgBtn')
     const openViewerBtn = document.getElementById('openViewerBtn')
     const viewerSourceWrap = document.getElementById('viewerSourceWrap')
-    // 新增搜索DOM
-    const globalSearchInput = document.getElementById('globalSearch')
-    const menuMask = document.getElementById('menuMask')
+    // 新增搜索、遮罩DOM
+    const searchInput = document.getElementById('searchInput')
+    const maskCloseMenu = document.getElementById('maskCloseMenu')
 
     let dirTree = new Map()
-    // 全局缓存所有真实目录段（带日期），用于纯前端路径匹配
     let allRealDirSegments = new Set()
     const allImagePaths = Object.keys(import.meta.glob('/public/albums/**/*.{jpg,jpeg,png,webp}', { eager: false }))
     const FOLDER_DATE_REG = /^(\d{4}-\d{2}-\d{2})-(.+)$/
 
-    // 移除单段目录的日期前缀
     function pureDirName(fullName) {
       const match = fullName.match(FOLDER_DATE_REG)
       return match ? match[2] : fullName
     }
 
-    // 纯前端反向匹配：根据干净无日期路径，查找真实带日期目录路径
     function getRealDirFromCleanPath(cleanDirPath) {
       if (!cleanDirPath) return ''
       const cleanSegs = cleanDirPath.split('/')
-      // 递归逐层匹配真实目录
       function matchLayer(segIndex, realParentPath) {
         if (segIndex >= cleanSegs.length) return realParentPath
         const targetCleanName = cleanSegs[segIndex]
-        // 遍历所有缓存的真实目录
         for (const realFullDir of allRealDirSegments) {
           const realSegs = realFullDir.split('/')
           if (realSegs.length !== segIndex + 1) continue
@@ -340,13 +347,11 @@
       return matchLayer(0, '')
     }
 
-    // 真实带日期路径：页面内部加载图片使用
     function realAssetUrl(dirPath, fileName) {
       const safeDir = dirPath ? dirPath + '/' : ''
       return ALBUM_BASE + safeDir + fileName
     }
 
-    // 清洗全路径所有层级日期前缀，生成对外永久外链
     function stripDatePrefixFromPath(dirPath) {
       if (!dirPath) return ''
       const segments = dirPath.split('/')
@@ -354,14 +359,12 @@
       return cleanSegments.join('/')
     }
 
-    // 输出无日期完整外链
     function getPublicCleanUrl(dirPath, fileName) {
       const cleanDir = stripDatePrefixFromPath(dirPath)
       const cleanPath = cleanDir ? `${ALBUM_BASE}${cleanDir}/${fileName}` : `${ALBUM_BASE}${fileName}`
       return location.origin + cleanPath
     }
 
-    // 构建目录树 + 缓存全部真实目录段用于前端路径匹配
     function buildDirectoryTree() {
       dirTree.clear()
       allRealDirSegments.clear()
@@ -471,7 +474,6 @@
       viewer.view(currentPhotoIndex)
     }
 
-    // 解析地址栏直接粘贴的无日期图片链接
     function parseCleanUrlFromBrowser() {
       const pathname = location.pathname
       if (!pathname.startsWith(ALBUM_BASE)) return null
@@ -538,22 +540,21 @@
       }
     })
 
-    // 修改：自适应宽高缩略图，不再固定150px
+    // 修改：自适应宽度缩略图，返回画布高度
     function createThumbnail(imgSrc, callback) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        // 宽度统一最大220，高度随原图比例自适应
-        const scale = THUMB_MAX_W / img.width
-        canvas.width = THUMB_MAX_W
+        const scale = THUMB_SIZE.w / img.width
+        canvas.width = THUMB_SIZE.w
         canvas.height = img.height * scale
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         callback(canvas.toDataURL('image/jpeg', 0.8), canvas.height)
       }
       img.onerror = () => {
-        const svg = `<svg width="${THUMB_MAX_W}" height="150"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">无预览图</text></svg>`
+        const svg = `<svg width="${THUMB_SIZE.w}" height="150"><rect fill="#eee" width="100%" height="100%"/><text x="50%" y="50%" fill="#999" text-anchor="middle">无预览图</text></svg>`
         callback(`data:image/svg+xml;utf8,${svg}`, 150)
       }
       img.src = imgSrc
@@ -564,105 +565,104 @@
         const img = new Image()
         img.crossOrigin = 'anonymous'
         img.onload = () => {
-          try{
-            const exif = piexif.load(img.src)
-            const ifd0 = exif['0th'] || {}
-            const exifInfo = exif.Exif || {}
-            const gps = exif.GPS || {}
-            const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
-            const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
-            let exp = []
-            if (exifInfo[piexif.ExifIFD.FNumber]) {
-              const f = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])
-              exp.push(`光圈 f/${f}`)
-            }
-            if (exifInfo[piexif.ExifIFD.ExposureTime]) {
-              const s = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime])
-              exp.push(`快门 1/${Math.round(1 / s)}s`)
-            }
-            const expStr = exp.join(' ') || '暂无'
-            let gpsStr = '暂无'
-            if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
-              const lat = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLatitude])
-              const lon = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLongitude])
-              gpsStr = `纬度:${lat.toFixed(6)} 经度:${lon.toFixed(6)}`
-            }
-            resolve({ takeTime, camera, expStr, gpsStr })
-          }catch(err){
-            resolve({ takeTime: '暂无', camera: '暂无', expStr: '暂无', gpsStr: '暂无' })
+          const exif = piexif.load(img.src)
+          const ifd0 = exif['0th'] || {}
+          const exifInfo = exif.Exif || {}
+          const gps = exif.GPS || {}
+          const takeTime = exifInfo[piexif.ExifIFD.DateTimeOriginal] || '暂无'
+          const camera = ifd0[piexif.ImageIFD.Model] || '暂无'
+          let exp = []
+          if (exifInfo[piexif.ExifIFD.FNumber]) {
+            const f = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.FNumber])
+            exp.push(`光圈 f/${f}`)
           }
+          if (exifInfo[piexif.ExifIFD.ExposureTime]) {
+            const s = piexif.GPSHelper.dmsToDeg(exifInfo[piexif.ExifIFD.ExposureTime])
+            exp.push(`快门 1/${Math.round(1 / s)}s`)
+          }
+          const expStr = exp.join(' ') || '暂无'
+          let gpsStr = '暂无'
+          if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
+            const lat = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLatitude])
+            const lon = piexif.GPSHelper.dmsToDeg(gps[piexif.GPSIFD.GPSLongitude])
+            gpsStr = `纬度:${lat.toFixed(6)} 经度:${lon.toFixed(6)}`
+          }
+          resolve({ takeTime, camera, expStr, gpsStr })
         }
         img.src = imgUrl
       })
     }
 
-    // 修改渲染逻辑：增加搜索过滤、三点菜单
+    // 重写渲染函数：增加搜索过滤、三点按钮、下拉菜单
     function renderMixedItemGrid(dirPath) {
       itemGrid.innerHTML = ''
       const node = dirTree.get(dirPath)
       const childDirList = node.children
       const photoFileList = node.files
       const kw = searchKeyword.toLowerCase().trim()
-      let hasItem = false
+      let hasMatch = false
 
+      // 渲染文件夹卡片
       for (const childFullDir of childDirList) {
         const segArr = childFullDir.split('/')
         const dirShortName = segArr[segArr.length - 1]
-        const displayNameRaw = pureDirName(dirShortName)
-        const displayName = showDate ? dirShortName : displayNameRaw
+        const displayRawName = pureDirName(dirShortName)
+        const displayName = showDate ? dirShortName : displayRawName
         // 搜索过滤
-        if(kw && !displayNameRaw.toLowerCase().includes(kw)) continue
-        hasItem = true
+        if(kw && !displayRawName.toLowerCase().includes(kw)) continue
+        hasMatch = true
+
         const coverImg = getDirCoverThumb(childFullDir)
         const card = document.createElement('div')
         card.className = 'grid-card'
         createThumbnail(coverImg, (thumbData, thumbH) => {
           card.innerHTML = `
             <span class="type-badge">📁 相册</span>
-            <button class="card-more-btn">⋯</button>
-            <div class="card-thumb-wrap" style="height:${thumbH}px;">
+            <button class="more-btn">⋯</button>
+            <div class="card-thumb-box" style="height:${thumbH}px;">
               <img class="card-thumb" src="${thumbData}">
             </div>
             <div class="card-name">${displayName}</div>
             <div class="card-menu">
               <div class="menu-item view-detail">查看详情</div>
-              <div class="menu-item copy-link" style="display:none;">复制图片直连</div>
+              <div class="menu-item" style="display:none;">复制图片直连</div>
               <div class="menu-item">敬请期待..</div>
             </div>
           `
         })
-        // 卡片点击进入文件夹
+        // 卡片点击进入文件夹（排除按钮和菜单区域）
         card.addEventListener('click', (e)=>{
-          if(e.target.closest('.card-more-btn') || e.target.closest('.card-menu')) return
+          if(e.target.closest('.more-btn') || e.target.closest('.card-menu')) return
           location.hash = `dir=${encodeURIComponent(childFullDir)}`
         })
-        // 三点按钮
-        const moreBtn = card.querySelector('.card-more-btn')
-        const menu = card.querySelector('.card-menu')
-        moreBtn.onclick = (e)=>{
+        // 三点按钮弹出菜单
+        const btnMore = card.querySelector('.more-btn')
+        const menuPop = card.querySelector('.card-menu')
+        btnMore.onclick = (e)=>{
           e.stopPropagation()
           closeAllMenu()
-          menu.style.display = 'block'
-          menuMask.style.display = 'block'
+          menuPop.style.display = 'block'
+          maskCloseMenu.style.display = 'block'
         }
-        // 菜单-查看详情
-        menu.querySelector('.view-detail').onclick = ()=>{
+        // 菜单：查看详情
+        menuPop.querySelector('.view-detail').onclick = ()=>{
           location.hash = `dir=${encodeURIComponent(childFullDir)}`
         }
         itemGrid.appendChild(card)
       }
 
+      // 渲染图片卡片
       for (const fileName of photoFileList) {
         if(kw && !fileName.toLowerCase().includes(kw)) continue
-        hasItem = true
+        hasMatch = true
         const imgSrc = realAssetUrl(dirPath, fileName)
         const card = document.createElement('div')
         card.className = 'grid-card'
         createThumbnail(imgSrc, (thumbData, thumbH) => {
           card.innerHTML = `
             <span class="type-badge">🖼️ 图片</span>
-            <button class="card-more-btn">⋯</button>
-            <div class="card-thumb-wrap" style="height:${thumbH}px;">
+            <button class="more-btn">⋯</button>
+            <div class="card-thumb-box" style="height:${thumbH}px;">
               <img class="card-thumb" src="${thumbData}">
             </div>
             <div class="card-name">${fileName}</div>
@@ -673,55 +673,56 @@
             </div>
           `
         })
-        // 卡片点击进详情
+        // 卡片点击进入图片详情
         card.addEventListener('click', (e)=>{
-          if(e.target.closest('.card-more-btn') || e.target.closest('.card-menu')) return
+          if(e.target.closest('.more-btn') || e.target.closest('.card-menu')) return
           location.hash = `dir=${encodeURIComponent(dirPath)}&photo=${encodeURIComponent(fileName)}`
         })
         // 三点菜单事件
-        const moreBtn = card.querySelector('.card-more-btn')
-        const menu = card.querySelector('.card-menu')
-        moreBtn.onclick = (e)=>{
+        const btnMore = card.querySelector('.more-btn')
+        const menuPop = card.querySelector('.card-menu')
+        btnMore.onclick = (e)=>{
           e.stopPropagation()
           closeAllMenu()
-          menu.style.display = 'block'
-          menuMask.style.display = 'block'
+          menuPop.style.display = 'block'
+          maskCloseMenu.style.display = 'block'
         }
         // 查看详情
-        menu.querySelector('.view-detail').onclick = ()=>{
+        menuPop.querySelector('.view-detail').onclick = ()=>{
           location.hash = `dir=${encodeURIComponent(dirPath)}&photo=${encodeURIComponent(fileName)}`
         }
-        // 复制直连
-        menu.querySelector('.copy-link').onclick = async ()=>{
-          const link = getPublicCleanUrl(dirPath, fileName)
-          try{
+        // 复制无日期永久外链
+        menuPop.querySelector('.copy-link').onclick = async ()=>{
+          const link = getPublicCleanUrl(currentDirPath, fileName)
+          try {
             await navigator.clipboard.writeText(link)
-            alert("已复制无日期永久外链！")
-          }catch{
-            alert("复制失败，链接："+link)
+            alert("已复制无日期永久图片外链！")
+          } catch(err) {
+            alert("复制失败，请手动复制链接："+link)
           }
         }
         itemGrid.appendChild(card)
       }
 
-      if(!hasItem){
-        itemGrid.innerHTML = '<div class="empty-tip">无匹配文件夹/图片</div>'
+      // 无匹配内容提示
+      if(!hasMatch) {
+        itemGrid.innerHTML = '<div class="empty-tip">未找到匹配的文件夹或图片</div>'
       }
     }
 
-    // 关闭所有下拉菜单
-    function closeAllMenu(){
-      document.querySelectorAll('.card-menu').forEach(m=>m.style.display='none')
-      menuMask.style.display = 'none'
+    // 关闭全部下拉菜单
+    function closeAllMenu() {
+      document.querySelectorAll('.card-menu').forEach(pop=>pop.style.display='none')
+      maskCloseMenu.style.display = 'none'
     }
 
-    // 搜索输入监听
-    globalSearchInput.addEventListener('input', e=>{
+    // 搜索输入实时过滤
+    searchInput.addEventListener('input', (e)=>{
       searchKeyword = e.target.value
       renderMixedItemGrid(currentDirPath)
     })
-    // 遮罩关闭菜单
-    menuMask.addEventListener('click', closeAllMenu)
+    // 点击遮罩关闭菜单
+    maskCloseMenu.addEventListener('click', closeAllMenu)
 
     homeToggleDate.addEventListener('change', e => {
       showDate = e.target.checked
@@ -736,7 +737,6 @@
     window.onload = () => {
       showDate = homeToggleDate.checked
       buildDirectoryTree()
-      // 优先检测地址栏直接粘贴的无日期图片路径
       const cleanUrlMatch = parseCleanUrlFromBrowser()
       if(cleanUrlMatch) {
         switchPage(cleanUrlMatch)
