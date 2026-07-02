@@ -20,6 +20,7 @@ export default defineConfig({
       input: {
         index: path.resolve(__dirname, 'index.html'),
         admin: path.resolve(__dirname, 'admin.html'),
+        test: path.resolve(__dirname, '1.html'),
         notfound: path.resolve(__dirname, '404.html') // 新增自定义404
       }
     }
